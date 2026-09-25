@@ -105,6 +105,10 @@ jobs:
           # настройку ради переезда незачем. Исходники агента рядом никому
           # не мешают — репозиторий публичный, они и так видны на github.com.
           # Старые отчёты убираем по шаблону имени, чтобы не задеть index.html.
+          if [ ! -d webapp ] || [ -z "$(ls -A webapp 2>/dev/null)" ]; then
+            echo "::error::папки webapp/ нет или она пуста — публиковать нечего"
+            exit 1
+          fi
           find . -maxdepth 1 -name "20*_daily.html" -delete
           find . -maxdepth 1 -name "20*_alert.html" -delete
           cp webapp/* .
