@@ -225,12 +225,17 @@ check("похожий чужой домен не ловится", not hs.uses_pr
 
 # ------------------------------------------------------------ отчёт, почта
 section("5. Отчёт и письмо")
+# Агент открывает базу по пути из настроек. В проверках это недопустимо:
+# 25 сентября самопроверка создала пустую базу в рабочем месте, шаг
+# сохранения счёл её состоянием и затёр настоящую историю в репозитории.
+_tmpdb = tempfile.mkdtemp()
 from regwatch.config import Config
 from regwatch.agent import Agent
 from regwatch.deliver import send_email, EmailNotConfigured
 
 cfg = Config.load(Path(__file__).parent / "config.json")
 check("пути конфига абсолютны", cfg.db_path.is_absolute() and cfg.reports_dir.is_absolute())
+cfg.data["db_path"] = str(Path(_tmpdb) / "t.db")
 a = Agent(cfg)
 buckets, rows, md, html, ev, label, dls, health_rows = a.build()
 check("markdown собирается", md.startswith("# Мониторинг") and len(md) > 80)
