@@ -1,0 +1,10 @@
+# Секреты и данные — наружу не выкладываем
+.venv-push/
+data/
+logs/
+reports/
+__pycache__/
+*.pyc
+.env
+.venv-pdf/
+.DS_Store

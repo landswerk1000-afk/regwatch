@@ -1,0 +1,51 @@
+{
+  "lookback_days": 21,
+  "thresholds": {
+    "report_min_relevance": 0.45,
+    "alert_min_relevance": 0.7,
+    "alert_urgencies": [
+      "critical"
+    ],
+    "max_items_per_report": 60
+  },
+  "proxy": {
+    "url": "",
+    "hosts": [
+      "duma.gov.ru",
+      "sozd.duma.gov.ru",
+      "regulation.gov.ru",
+      "council.gov.ru",
+      "minfin.gov.ru"
+    ]
+  },
+  "relay": {
+    "url": "",
+    "_comment": "Функция-ретранслятор в Yandex Cloud: скачивает госсайты с российского IP. Адрес можно держать здесь или в REGWATCH_RELAY_URL. Токен — только в ~/.regwatch.env (REGWATCH_RELAY_TOKEN). Список сайтов берётся из proxy.hosts. Если задан — используется вместо прокси."
+  },
+  "sources": {
+    "sozd": {
+      "enabled": true
+    },
+    "regulation": {
+      "enabled": false
+    },
+    "duma_api": {
+      "enabled": false
+    }
+  },
+  "email": {
+    "enabled": false,
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 465,
+    "use_ssl": true,
+    "use_starttls": false,
+    "username": "",
+    "password_env": "REGWATCH_SMTP_PASSWORD",
+    "from_addr": "",
+    "to": [],
+    "subject_prefix": "[Регмонитор]",
+    "_comment": "Выключено. Адреса намеренно пусты: config.json публичный. Включать — задать REGWATCH_SMTP_USER, REGWATCH_SMTP_TO в ~/.regwatch.env и enabled: true"
+  },
+  "webapp_url": "https://landswerk1000-afk.github.io/regwatch/",
+  "_webapp_url_hint": "Адрес опубликованного приложения — уведомления будут вести сюда"
+}

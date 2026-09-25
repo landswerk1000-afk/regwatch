@@ -1,0 +1,127 @@
+name: Мониторинг регулирования
+
+# Агент работает на серверах GitHub, поэтому не зависит от того,
+# включён ли ноутбук. Доступ к госсайтам идёт через ретранслятор
+# в Yandex Cloud — с зарубежного адреса порталы ГД, СФ и Минфина
+# обрывают соединение.
+on:
+  schedule:
+    # Время в UTC. Москва = UTC+3, поэтому 06:30 UTC = 9:30 МСК.
+    - cron: "30 6 * * *"      # ежедневный отчёт
+    - cron: "0 */3 * * *"     # проверка срочного, каждые 3 часа
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Что запустить"
+        type: choice
+        options: [daily, alert]
+        default: daily
+
+# Два прогона одновременно испортят базу состояния: оба увидят одни
+# и те же документы новыми. Ждём, а не отменяем — отчёт важнее скорости.
+concurrency:
+  group: regwatch
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Зависимости
+        run: |
+          python -m pip install --quiet --upgrade pip
+          python -m pip install --quiet -r requirements.txt
+          # Inter — фирменный шрифт отчёта. Если пакета нет, сборщик PDF
+          # сам возьмёт Liberation Sans: он повторяет метрики Arial,
+          # и вёрстка не поедет.
+          sudo apt-get update -qq && sudo apt-get install -y -qq fonts-inter || true
+
+      - name: Восстановить базу состояния
+        run: |
+          mkdir -p data
+          if [ -f state/regwatch.db ]; then
+            cp state/regwatch.db data/regwatch.db
+            echo "база восстановлена: $(du -h data/regwatch.db | cut -f1)"
+          else
+            echo "базы нет — первый запуск, все документы будут новыми"
+          fi
+
+      - name: Прогон
+        env:
+          # Доступ к госсайтам
+          REGWATCH_RELAY_URL: ${{ secrets.REGWATCH_RELAY_URL }}
+          REGWATCH_RELAY_TOKEN: ${{ secrets.REGWATCH_RELAY_TOKEN }}
+          # Уведомления. Подписки берутся из секрета, а не из базы:
+          # база лежит в публичном репозитории, адресам устройств там не место.
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          REGWATCH_PUSH_SUBSCRIPTIONS: ${{ secrets.REGWATCH_PUSH_SUBSCRIPTIONS }}
+          # Telegram
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          # cron «0 */3» приходит и в 6 утра — но в это время уже идёт
+          # ежедневный отчёт, и срочная проверка только продублирует его.
+          MODE="${{ github.event.inputs.mode || '' }}"
+          if [ -z "$MODE" ]; then
+            if [ "${{ github.event.schedule }}" = "30 6 * * *" ]; then MODE=daily; else MODE=alert; fi
+          fi
+          echo "режим: $MODE"
+          if [ "$MODE" = "alert" ]; then
+            python -m regwatch run --alert
+          else
+            python -m regwatch run
+          fi
+
+      - name: Сохранить состояние и сайт
+        run: |
+          mkdir -p state docs
+          # База состояния: без неё агент при каждом запуске считал бы
+          # все документы новыми. Подписки на уведомления из неё вырезаем —
+          # репозиторий публичный.
+          python - <<'PY'
+          import shutil, sqlite3
+          shutil.copy2("data/regwatch.db", "state/regwatch.db")
+          db = sqlite3.connect("state/regwatch.db")
+          db.execute("DELETE FROM push_subscriptions")
+          db.commit()
+          db.execute("VACUUM")
+          db.close()
+          PY
+          # Сайт отдаётся из docs/, а не из корня: иначе GitHub Pages
+          # публиковал бы и исходники агента вместе с настройками.
+          rm -rf docs
+          mkdir -p docs
+          cp webapp/* docs/
+          echo "состояние: $(du -h state/regwatch.db | cut -f1), файлов сайта: $(ls docs | wc -l)"
+
+      - name: Опубликовать
+        run: |
+          git config user.name "Регмонитор"
+          git config user.email "regwatch@local"
+          git add -A state docs
+          if git diff --cached --quiet; then
+            echo "изменений нет"
+          else
+            git commit -m "Отчёты и состояние: $(date -u '+%Y-%m-%d %H:%M UTC')"
+            # Пока шёл сбор, в ветку могли попасть другие изменения.
+            git pull --rebase --autostash origin ${{ github.ref_name }} || true
+            git push
+          fi
+
+      - name: Журнал прогона
+        if: always()
+        run: tail -40 logs/cron.log 2>/dev/null || echo "журнала нет"
