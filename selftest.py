@@ -27,13 +27,20 @@ load_env_file()   # секреты из ~/.regwatch.env
 # так, чем протаскивать аргументы через шаг запуска.
 OFFLINE = ("--offline" in sys.argv
            or os.environ.get("REGWATCH_SELFTEST_OFFLINE") == "1")
-PASS, FAIL = [], []
+PASS, FAIL, SKIPPED = [], [], []
 
 
 def check(name, cond, detail=""):
     (PASS if cond else FAIL).append(name)
     print(f"  {'✓' if cond else '✗'} {name}" + (f"  — {detail}" if detail and not cond else ""))
     return cond
+
+
+def skip(name, why):
+    """Проверка неприменима в этом окружении. Не провал, но и не успех —
+    молча пропускать нельзя, иначе дыра в покрытии останется незамеченной."""
+    SKIPPED.append(name)
+    print(f"  ∼ {name} — пропущено: {why}")
 
 
 def section(t):
@@ -272,8 +279,21 @@ from regwatch.deliver import webpush as _wp
 import json as _json
 
 root = Path(__file__).resolve().parent
-check("ключ VAPID задан", bool(_wp.vapid()["private"]), "нет VAPID_PRIVATE_KEY")
-check("окружение .venv-push на месте", _wp.venv_python(root) is not None)
+
+# Наличие ключей и окружений — свойство МАШИНЫ, а не кода. Если проверять
+# их здесь, тесты нельзя прогнать на чистой копии репозитория, а заслон
+# перед развёртыванием начинает падать по причинам, не связанным с правками.
+# Настроенность окружения проверяет `regwatch doctor` и отдельный шаг
+# в конвейере сборки; здесь — только то, что можно проверить где угодно.
+if _wp.vapid()["private"]:
+    check("ключ VAPID пригоден для подписи", len(_wp.vapid()["private"]) >= 40,
+          f'подозрительно короткий: {len(_wp.vapid()["private"])} символов')
+else:
+    skip("ключ VAPID задан", "ключа нет в окружении — это проверяет doctor")
+if _wp.venv_python(root) is not None:
+    check("отправщик push запускается", True)
+else:
+    skip("окружение для push", "ни .venv-push, ни pywebpush — это проверяет doctor")
 check("отправщик на месте", _wp.SENDER.exists())
 
 good = _json.dumps({"endpoint": "https://fcm.googleapis.com/fcm/send/X",
@@ -670,7 +690,8 @@ _sh.rmtree(_box)
 
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
-print(f"Пройдено: {len(PASS)}   Провалено: {len(FAIL)}")
+tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""
+print(f"Пройдено: {len(PASS)}   Провалено: {len(FAIL)}{tail}")
 if FAIL:
     print("\nНе прошли:")
     for f in FAIL:

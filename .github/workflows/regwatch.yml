@@ -59,6 +59,34 @@ jobs:
         # и это не повод не выпускать отчёт.
         run: REGWATCH_SELFTEST_OFFLINE=1 python selftest.py
 
+      - name: Проверить секреты
+        # Из самопроверки это убрано намеренно: наличие ключей — свойство
+        # окружения, а не кода, и тесты должны идти на чистой копии.
+        # Но пропажу секрета поймать надо, и здесь для этого верное место:
+        # молчаливая потеря ключа означала бы отчёты, которые никуда не уходят.
+        env:
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
+          REGWATCH_RELAY_URL: ${{ secrets.REGWATCH_RELAY_URL }}
+          REGWATCH_RELAY_TOKEN: ${{ secrets.REGWATCH_RELAY_TOKEN }}
+          REGWATCH_PUSH_SUBSCRIPTIONS: ${{ secrets.REGWATCH_PUSH_SUBSCRIPTIONS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          missing=""
+          for v in VAPID_PRIVATE_KEY VAPID_PUBLIC_KEY REGWATCH_RELAY_URL \
+                   REGWATCH_RELAY_TOKEN REGWATCH_PUSH_SUBSCRIPTIONS \
+                   TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::нет секретов:$missing"
+            exit 1
+          fi
+          # Длину печатать безопасно, значение — нет.
+          echo "все 7 секретов на месте (ключ VAPID: ${#VAPID_PRIVATE_KEY} символов,"
+          echo "подписок в секрете: $(python -c "import json,os;print(len(json.loads(os.environ['REGWATCH_PUSH_SUBSCRIPTIONS'])))"))"
+
       - name: Восстановить базу состояния
         run: |
           mkdir -p data
