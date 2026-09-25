@@ -26,6 +26,11 @@ concurrency:
 permissions:
   contents: write
 
+env:
+  # Ветка, где живёт только база состояния. Она перезаписывается целиком
+  # при каждом прогоне, поэтому история там всегда из одного коммита.
+  STATE_BRANCH: state
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -48,14 +53,23 @@ jobs:
           # и вёрстка не поедет.
           sudo apt-get update -qq && sudo apt-get install -y -qq fonts-inter || true
 
+      - name: Самопроверка
+        # Ломать продакшн молча нельзя: сюда уезжает всё, что попало в ветку.
+        # Сетевые проверки пропускаем — источники могут лежать по своим причинам,
+        # и это не повод не выпускать отчёт.
+        run: REGWATCH_SELFTEST_OFFLINE=1 python selftest.py
+
       - name: Восстановить базу состояния
         run: |
           mkdir -p data
-          if [ -f state/regwatch.db ]; then
-            cp state/regwatch.db data/regwatch.db
+          # База лежит в отдельной ветке, а не в main: она двоичная, весит
+          # мегабайты и меняется каждый прогон. В main её история за год
+          # раздула бы репозиторий до гигабайтов.
+          if git fetch --depth 1 origin "$STATE_BRANCH" 2>/dev/null; then
+            git show FETCH_HEAD:regwatch.db > data/regwatch.db
             echo "база восстановлена: $(du -h data/regwatch.db | cut -f1)"
           else
-            echo "базы нет — первый запуск, все документы будут новыми"
+            echo "ветки $STATE_BRANCH ещё нет — первый запуск, все документы будут новыми"
           fi
 
       - name: Прогон
@@ -86,50 +100,89 @@ jobs:
             python -m regwatch run
           fi
 
-      - name: Сохранить состояние и сайт
+      # Состояние сохраняем СРАЗУ после прогона и при любом его исходе.
+      # Раньше это был последний шаг, после публикации: публикация падала,
+      # состояние терялось, и следующий прогон слал те же уведомления заново.
+      # Так и случилось дважды 25 сентября.
+      - name: Сохранить состояние
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p state
-          # База состояния: без неё агент при каждом запуске считал бы
-          # все документы новыми. Подписки на уведомления из неё вырезаем —
-          # репозиторий публичный.
+          [ -f data/regwatch.db ] || { echo "базы нет — сохранять нечего"; exit 0; }
+          # Подписки на уведомления вырезаем: репозиторий публичный,
+          # адресам устройств там не место.
           python - <<'PY'
           import shutil, sqlite3
-          shutil.copy2("data/regwatch.db", "state/regwatch.db")
-          db = sqlite3.connect("state/regwatch.db")
+          shutil.copy2("data/regwatch.db", "/tmp/regwatch.db")
+          db = sqlite3.connect("/tmp/regwatch.db")
           db.execute("DELETE FROM push_subscriptions")
-          db.commit()
-          db.execute("VACUUM")
-          db.close()
+          db.commit(); db.execute("VACUUM"); db.close()
           PY
-          # Сайт лежит в корне: так GitHub Pages настроен изначально, и менять
-          # настройку ради переезда незачем. Исходники агента рядом никому
-          # не мешают — репозиторий публичный, они и так видны на github.com.
-          # Старые отчёты убираем по шаблону имени, чтобы не задеть index.html.
+          # Отдельный одноразовый репозиторий: так в ветке гарантированно
+          # остаётся ровно один коммит, а не история на гигабайты.
+          tmp=$(mktemp -d)
+          cp /tmp/regwatch.db "$tmp/regwatch.db"
+          cd "$tmp"
+          git init -q
+          git checkout -q -b "$STATE_BRANCH"
+          git add regwatch.db
+          git -c user.name="Регмонитор" -c user.email="regwatch@local" \
+              commit -q -m "Состояние на $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push -q --force \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+            "$STATE_BRANCH"
+          echo "состояние сохранено: $(du -h regwatch.db | cut -f1)"
+
+      - name: Обновить сайт
+        run: |
           if [ ! -d webapp ] || [ -z "$(ls -A webapp 2>/dev/null)" ]; then
             echo "::error::папки webapp/ нет или она пуста — публиковать нечего"
             exit 1
           fi
+          # Сайт лежит в корне: так GitHub Pages настроен изначально.
+          # Старые отчёты убираем по шаблону имени, чтобы не задеть index.html.
           find . -maxdepth 1 -name "20*_daily.html" -delete
           find . -maxdepth 1 -name "20*_alert.html" -delete
           cp webapp/* .
           # .nojekyll выключает обработку Jekyll: она пытается собирать сайт
           # из README.md и прочих файлов, которых на странице быть не должно.
           touch .nojekyll
-          echo "состояние: $(du -h state/regwatch.db | cut -f1)"
-
-      - name: Опубликовать
-        run: |
+          # Старое место базы: теперь она в отдельной ветке.
+          rm -rf state
           git config user.name "Регмонитор"
           git config user.email "regwatch@local"
           git add -A
           if git diff --cached --quiet; then
             echo "изменений нет"
           else
-            git commit -m "Отчёты и состояние: $(date -u '+%Y-%m-%d %H:%M UTC')"
-            # Пока шёл сбор, в ветку могли попасть другие изменения.
+            git commit -m "Отчёты: $(date -u '+%Y-%m-%d %H:%M UTC')"
             git pull --rebase --autostash origin ${{ github.ref_name }} || true
             git push
           fi
+
+      # Без этого шага агент умирает молча: отчёт просто не приходит,
+      # а «сегодня нет новостей» и «агент сломан» выглядят одинаково.
+      # Telegram выбран намеренно — сообщение уходит обычным curl и не зависит
+      # ни от установленных библиотек, ни от того, на каком шаге всё упало.
+      - name: Сообщить о сбое
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          [ -n "$TELEGRAM_BOT_TOKEN" ] || { echo "Telegram не настроен"; exit 0; }
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # Текст собираем printf'ом, а не многострочной переменной: строки
+          # такой переменной вылезают из отступа блока и ломают сам YAML.
+          TEXT=$(printf '<b>Регмонитор: прогон не удался</b>\n\nОтчёт сегодня не вышел.\n\nВремя: %s UTC\nЗапуск: <a href="%s">журнал прогона</a>\n\nСостояние базы сохранено — повторный запуск не пришлёт дубли.' "$(date -u '+%d.%m.%Y %H:%M')" "$RUN_URL")
+          curl -sS --max-time 25 -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="${TELEGRAM_CHAT_ID}" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode text="$TEXT" \
+            -o /dev/null -w "уведомление о сбое: HTTP %{http_code}\n"
 
       - name: Журнал прогона
         if: always()

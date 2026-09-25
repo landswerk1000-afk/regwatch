@@ -23,7 +23,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from regwatch.config import load_env_file
 load_env_file()   # секреты из ~/.regwatch.env
 
-OFFLINE = "--offline" in sys.argv
+# Флаг можно задать и переменной окружения: в конвейере сборки удобнее
+# так, чем протаскивать аргументы через шаг запуска.
+OFFLINE = ("--offline" in sys.argv
+           or os.environ.get("REGWATCH_SELFTEST_OFFLINE") == "1")
 PASS, FAIL = [], []
 
 
