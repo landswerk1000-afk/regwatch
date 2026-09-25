@@ -88,7 +88,7 @@ jobs:
 
       - name: Сохранить состояние и сайт
         run: |
-          mkdir -p state docs
+          mkdir -p state
           # База состояния: без неё агент при каждом запуске считал бы
           # все документы новыми. Подписки на уведомления из неё вырезаем —
           # репозиторий публичный.
@@ -101,18 +101,23 @@ jobs:
           db.execute("VACUUM")
           db.close()
           PY
-          # Сайт отдаётся из docs/, а не из корня: иначе GitHub Pages
-          # публиковал бы и исходники агента вместе с настройками.
-          rm -rf docs
-          mkdir -p docs
-          cp webapp/* docs/
-          echo "состояние: $(du -h state/regwatch.db | cut -f1), файлов сайта: $(ls docs | wc -l)"
+          # Сайт лежит в корне: так GitHub Pages настроен изначально, и менять
+          # настройку ради переезда незачем. Исходники агента рядом никому
+          # не мешают — репозиторий публичный, они и так видны на github.com.
+          # Старые отчёты убираем по шаблону имени, чтобы не задеть index.html.
+          find . -maxdepth 1 -name "20*_daily.html" -delete
+          find . -maxdepth 1 -name "20*_alert.html" -delete
+          cp webapp/* .
+          # .nojekyll выключает обработку Jekyll: она пытается собирать сайт
+          # из README.md и прочих файлов, которых на странице быть не должно.
+          touch .nojekyll
+          echo "состояние: $(du -h state/regwatch.db | cut -f1)"
 
       - name: Опубликовать
         run: |
           git config user.name "Регмонитор"
           git config user.email "regwatch@local"
-          git add -A state docs
+          git add -A
           if git diff --cached --quiet; then
             echo "изменений нет"
           else
