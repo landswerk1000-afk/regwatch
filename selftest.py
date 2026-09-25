@@ -631,6 +631,40 @@ check("состояние источников не попадает в моде
       "health" not in _R.to_model({}, [], _probe_health, "Проверка", []))
 
 
+# --------------------------------- выгрузка отчётов на сайт
+section("13. Выгрузка отчётов не теряет историю")
+import tempfile as _tf, shutil as _sh
+from regwatch.deliver import webpush as _wp2
+
+
+def _mk(d, names):
+    d.mkdir(parents=True, exist_ok=True)
+    for n in names:
+        (d / n).write_text("<html>x</html>", encoding="utf-8")
+
+
+# На сервере сборки папка reports/ пуста при каждом запуске. Пока выгрузка
+# просто зеркалила её, на сайте оставался единственный свежий отчёт,
+# а накопленная история пропадала.
+_box = Path(_tf.mkdtemp())
+_root = _box / "проект"
+(_root / "webapp").mkdir(parents=True)
+_mk(_root / "webapp", ["2026-09-24_1818_daily.html", "2026-09-25_0931_daily.html"])
+(_root / "webapp" / "index.html").write_text("сайт", encoding="utf-8")
+_rep = _box / "reports"
+_mk(_rep, ["2026-09-25_1200_daily.html"])
+_wp2.export_reports(_root, _rep)
+_left = sorted(f.name for f in (_root / "webapp").glob("*.html")
+               if _wp2.REPORT_NAME.match(f.name))
+check("прежние отчёты остаются", len(_left) == 3, str(_left))
+check("свежий добавляется", "2026-09-25_1200_daily.html" in _left)
+check("index.html не трогается", (_root / "webapp" / "index.html").exists())
+_idx = _json.loads((_root / "webapp" / "latest.json").read_text(encoding="utf-8"))
+check("самый свежий первым в указателе",
+      _idx["reports"][0]["file"] == "2026-09-25_1200_daily.html")
+_sh.rmtree(_box)
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 print(f"Пройдено: {len(PASS)}   Провалено: {len(FAIL)}")

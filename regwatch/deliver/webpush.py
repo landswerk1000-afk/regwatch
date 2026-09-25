@@ -243,13 +243,20 @@ def export_reports(root: Path, reports_dir: Path, limit: int = 12) -> int:
     if not webapp.exists():
         return 0
 
-    files = sorted(reports_dir.glob("*.html"), key=lambda p: p.stat().st_mtime, reverse=True)
-    files = [f for f in files if REPORT_NAME.match(f.name)][:limit]
+    # Складываем свежие отчёты с теми, что уже лежат в приложении. Это важно
+    # там, где агент работает на сервере сборки: папка reports/ там пустая
+    # при каждом запуске, и без объединения выгрузка снесла бы всю историю,
+    # оставив на сайте единственный сегодняшний отчёт.
+    fresh = {f.name: f for f in reports_dir.glob("*.html") if REPORT_NAME.match(f.name)}
+    already = {f.name: f for f in webapp.glob("*.html") if REPORT_NAME.match(f.name)}
+    merged = {**already, **fresh}          # свежая копия важнее старой
 
-    # Убираем отчёты, выпавшие из окна, чтобы папка не росла бесконечно.
-    # Сверяемся с шаблоном имени: рядом лежат index.html и прочие файлы
-    # приложения, и снести их было бы катастрофой.
-    keep = {f.name for f in files}
+    # Имя начинается с даты и времени, поэтому сортировка по имени —
+    # это сортировка по времени, и она не зависит от отметок файловой системы.
+    names = sorted(merged, reverse=True)[:limit]
+    files = [merged[n] for n in names]
+
+    keep = set(names)
     for old in webapp.glob("*.html"):
         if REPORT_NAME.match(old.name) and old.name not in keep:
             old.unlink()
@@ -261,7 +268,8 @@ def export_reports(root: Path, reports_dir: Path, limit: int = 12) -> int:
 
     index = []
     for f in files:
-        shutil.copy2(f, webapp / f.name)
+        if f.resolve() != (webapp / f.name).resolve():
+            shutil.copy2(f, webapp / f.name)
         md = f.with_suffix(".md")
         summary = ""
         if md.exists():
