@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Регмонитор — частные инвестиции</title>
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#F6F7F8">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Регмонитор">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<!-- Страница на бесплатном GitHub Pages общедоступна. Индексацию закрываем:
+     попасть на неё можно только по прямой ссылке. -->
+<meta name="robots" content="noindex, nofollow">
+<style>
+  /* Палитра снята с fgiis.ru. Те же значения — в regwatch/brand.py,
+     откуда их берут отчёт и PDF: приложение и документ не должны разъезжаться. */
+  :root{
+    --bg:#F6F7F8; --card:#fff; --surface:#eef1f4;
+    --ink:#313132; --muted:#717172; --faint:#6f7074;
+    --line:#dcdfe3; --line-soft:#e8ebee;
+    --accent:#06b6cb; --accent-ink:#197b88; --accent-soft:#e7f8fa; --accent-edge:#a9e4ec;
+    --ok:#197b88; --warn:#8a6a2f; --crit:#ab5942;
+    --on-accent:#313132;
+  }
+  /* Тёмная тема — тот же графит и та же бирюза, перевёрнутые.
+     Светлая остаётся основной: у ФГИИС тема светлая. */
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#17181a; --card:#202225; --surface:#26282c;
+      --ink:#f0f1f2; --muted:#a8aaad; --faint:#8e9094;
+      --line:#33363a; --line-soft:#2a2d31;
+      --accent:#06b6cb; --accent-ink:#4fd3e3; --accent-soft:#12343a; --accent-edge:#1e4e57;
+      --ok:#4fd3e3; --warn:#d2a655; --crit:#e09076;
+      --on-accent:#17181a;
+    }
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.55 'Inter','Inter var',-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+    padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  }
+  .wrap{max-width:640px;margin:0 auto;padding:22px 16px 46px}
+  header{background:var(--card);border:1px solid var(--line);border-bottom:none;
+         padding:26px 22px 20px}
+  .kicker{font-size:10px;font-weight:600;letter-spacing:2.4px;text-transform:uppercase;
+          color:var(--accent-ink);margin-bottom:12px}
+  h1{margin:0 0 6px;font-size:23px;line-height:1.18;color:var(--ink);
+     font-weight:700;letter-spacing:-.5px}
+  .sub{font-size:12px;color:var(--faint);margin-top:12px;padding-top:11px;
+       border-top:1px solid var(--line-soft)}
+  .headrule{height:3px;background:var(--accent);margin-bottom:20px}
+  .card{background:var(--card);border:1px solid var(--line);
+        padding:18px 20px;margin-bottom:12px}
+  .card.lead{border-top:3px solid var(--accent)}
+  h2{margin:0 0 12px;font-size:10.5px;font-weight:700;letter-spacing:1.8px;
+     text-transform:uppercase;color:var(--ink)}
+  p{margin:0 0 10px;color:var(--muted);font-size:14px}
+  button{
+    appearance:none;border:0;border-radius:2px;padding:14px 18px;font-size:15px;
+    font-weight:600;cursor:pointer;background:var(--accent);color:var(--on-accent);
+    width:100%;font-family:inherit;letter-spacing:.2px;
+  }
+  button:hover{filter:brightness(1.05)}
+  button:disabled{opacity:.4;cursor:default}
+  button.ghost{background:transparent;color:var(--accent-ink);border:1px solid var(--line)}
+  .state{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;margin-bottom:10px}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--faint);flex:none}
+  .dot.on{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.off{background:var(--crit)}
+  code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  pre{
+    background:var(--surface);border:1px solid var(--line);border-radius:2px;
+    padding:11px;font-size:10.5px;line-height:1.45;overflow:auto;max-height:170px;
+    white-space:pre-wrap;word-break:break-all;color:var(--muted);margin:0 0 10px
+  }
+  ol{margin:0;padding-left:20px;color:var(--muted);font-size:14px}
+  ol li{margin-bottom:8px}
+  ol li::marker{color:var(--accent-ink);font-weight:700}
+  .hidden{display:none !important}
+  .ios{border-top:3px solid var(--accent)}
+  .ios h2{color:var(--accent-ink)}
+  footer{margin-top:26px;padding-top:15px;border-top:2px solid var(--accent);
+         font-size:11px;color:var(--faint);line-height:1.7;text-align:center}
+  a{color:var(--accent-ink)}
+  .rep{display:block;padding:13px 0;border-top:1px solid var(--line-soft);
+       text-decoration:none;color:var(--ink);font-size:14px}
+  .rep:first-of-type{border-top:0}
+  .rep:hover b{color:var(--accent-ink)}
+  .rep small{display:block;color:var(--faint);font-size:12px;margin-top:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="kicker">Мониторинг регулирования</div>
+    <h1>Частные инвестиции</h1>
+    <div class="sub">ЦБ · Минфин · Госдума · Совет Федерации</div>
+  </header>
+  <div class="headrule"></div>
+
+  <!-- iOS: без установки на экран «Домой» push не работает вовсе -->
+  <div class="card ios hidden" id="iosHint">
+    <h2>Сначала установите приложение</h2>
+    <p>На iPhone уведомления приходят только из приложения, добавленного на
+       экран «Домой». Из Safari они не работают — это ограничение Apple.</p>
+    <ol>
+      <li>Нажмите <b>Поделиться</b> — квадрат со стрелкой вверх внизу экрана</li>
+      <li>Выберите <b>На экран «Домой»</b></li>
+      <li>Нажмите <b>Добавить</b></li>
+      <li>Откройте <b>Регмонитор</b> с экрана «Домой» и вернитесь сюда</li>
+    </ol>
+  </div>
+
+  <div class="card" id="pushCard">
+    <h2>Уведомления</h2>
+    <div class="state"><span class="dot" id="dot"></span><span id="stateText">Проверяю…</span></div>
+    <p id="stateHint">Срочное приходит сразу, ежедневный отчёт — утром.</p>
+    <button id="subBtn" class="hidden">Включить уведомления</button>
+    <button id="unsubBtn" class="ghost hidden">Отключить на этом устройстве</button>
+  </div>
+
+  <div class="card hidden" id="codeCard">
+    <h2>Код устройства</h2>
+    <p>Передайте эту строку один раз — после этого устройство начнёт получать
+       уведомления. Повторять не нужно.</p>
+    <pre id="subJson"></pre>
+    <button id="copyBtn" class="ghost">Скопировать код</button>
+  </div>
+
+  <div class="card" id="reportCard">
+    <h2>Отчёты</h2>
+    <div id="reportList"><p id="reportEmpty">Загружаю…</p></div>
+  </div>
+
+  <footer>
+    Автоматический мониторинг первоисточников.<br>
+    Сведения приведены по данным госпорталов на момент сбора.
+  </footer>
+</div>
+
+<script src="./config.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var reg = null, sub = null;
+
+  var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+              (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var standalone = window.matchMedia('(display-mode: standalone)').matches ||
+                   window.navigator.standalone === true;
+
+  function setState(cls, text, hint) {
+    $('dot').className = 'dot ' + cls;
+    $('stateText').textContent = text;
+    if (hint) $('stateHint').textContent = hint;
+  }
+
+  function urlB64ToUint8(base64) {
+    var pad = '='.repeat((4 - base64.length % 4) % 4);
+    var raw = atob((base64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, function (c) { return c.charCodeAt(0); });
+  }
+
+  function showSub(s) {
+    sub = s;
+    if (!s) { $('codeCard').classList.add('hidden'); return; }
+    var j = s.toJSON();
+    $('subJson').textContent = JSON.stringify({
+      endpoint: j.endpoint, keys: j.keys,
+      device: (isIOS ? 'iPhone' : navigator.platform || 'устройство')
+    }, null, 1);
+    $('codeCard').classList.remove('hidden');
+  }
+
+  // iOS без установки на «Домой» — push технически недоступен
+  if (isIOS && !standalone) {
+    $('iosHint').classList.remove('hidden');
+    setState('warn', 'Нужна установка на экран «Домой»',
+             'После установки откройте приложение с главного экрана.');
+    $('pushCard').classList.add('hidden');
+  }
+
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    setState('off', 'Браузер не поддерживает уведомления',
+             'Откройте страницу в Safari (iPhone) или Chrome.');
+  } else {
+    navigator.serviceWorker.register('./sw.js').then(function (r) {
+      reg = r;
+      return r.pushManager.getSubscription();
+    }).then(function (existing) {
+      if (existing) {
+        showSub(existing);
+        setState('on', 'Уведомления включены',
+                 'Это устройство получает срочные события и утренний отчёт.');
+        $('unsubBtn').classList.remove('hidden');
+      } else if (Notification.permission === 'denied') {
+        setState('off', 'Уведомления запрещены',
+                 'Разрешение отозвано в настройках браузера — включите его там.');
+      } else if (!(isIOS && !standalone)) {
+        setState('warn', 'Уведомления выключены', 'Нажмите кнопку ниже.');
+        $('subBtn').classList.remove('hidden');
+      }
+    }).catch(function (e) {
+      setState('off', 'Ошибка', String(e && e.message || e));
+    });
+  }
+
+  $('subBtn').addEventListener('click', function () {
+    $('subBtn').disabled = true;
+    Notification.requestPermission().then(function (p) {
+      if (p !== 'granted') {
+        $('subBtn').disabled = false;
+        setState('off', 'Разрешение не получено', 'Без него уведомления не придут.');
+        return;
+      }
+      return reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8(window.VAPID_PUBLIC_KEY)
+      }).then(function (s) {
+        showSub(s);
+        setState('on', 'Уведомления включены', 'Осталось передать код устройства ниже.');
+        $('subBtn').classList.add('hidden');
+        $('unsubBtn').classList.remove('hidden');
+      });
+    }).catch(function (e) {
+      $('subBtn').disabled = false;
+      setState('off', 'Не удалось подписаться', String(e && e.message || e));
+    });
+  });
+
+  $('unsubBtn').addEventListener('click', function () {
+    if (!sub) return;
+    sub.unsubscribe().then(function () {
+      showSub(null);
+      setState('warn', 'Уведомления выключены', 'Можно включить снова в любой момент.');
+      $('unsubBtn').classList.add('hidden');
+      $('subBtn').classList.remove('hidden');
+      $('subBtn').disabled = false;
+    });
+  });
+
+  $('copyBtn').addEventListener('click', function () {
+    var text = $('subJson').textContent;
+    var done = function () {
+      $('copyBtn').textContent = 'Скопировано';
+      setTimeout(function () { $('copyBtn').textContent = 'Скопировать код'; }, 2000);
+    };
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(done).catch(function () {});
+    } else {
+      var t = document.createElement('textarea');
+      t.value = text; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); done(); } catch (e) {}
+      document.body.removeChild(t);
+    }
+  });
+
+  // Список отчётов: агент кладёт рядом latest.json
+  fetch('./latest.json', { cache: 'no-store' }).then(function (r) {
+    if (!r.ok) throw new Error('нет');
+    return r.json();
+  }).then(function (d) {
+    var list = $('reportList');
+    var items = (d && d.reports) || [];
+    if (!items.length) throw new Error('пусто');
+    list.innerHTML = '';
+    items.slice(0, 10).forEach(function (rep) {
+      var a = document.createElement('a');
+      a.className = 'rep';
+      a.href = rep.file;
+      a.innerHTML = '<b></b><small></small>';
+      a.querySelector('b').textContent = rep.title || 'Отчёт';
+      a.querySelector('small').textContent = rep.summary || '';
+      list.appendChild(a);
+    });
+  }).catch(function () {
+    $('reportEmpty').textContent =
+      'Отчётов пока нет. Они появятся здесь после первой выгрузки.';
+  });
+})();
+</script>
+</body>
+</html>
