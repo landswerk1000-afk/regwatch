@@ -105,7 +105,26 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
+        self._add_missing_columns()
         self.db.commit()
+
+    # Схема создаётся через CREATE TABLE IF NOT EXISTS, и на уже существующей
+    # базе новые столбцы так не появятся. Добавляем их отдельно: база живёт
+    # в репозитории и переживает обновления кода, пересоздать её нельзя.
+    NEW_COLUMNS = {
+        "source_health": [
+            # Последний уровень сбоев, о котором уже сообщили. Без него
+            # предупреждение уходило бы каждые три часа, пока источник лежит.
+            ("alerted_streak", "INTEGER DEFAULT 0"),
+        ],
+    }
+
+    def _add_missing_columns(self) -> None:
+        for table, columns in self.NEW_COLUMNS.items():
+            have = {r[1] for r in self.db.execute(f"PRAGMA table_info({table})")}
+            for name, decl in columns:
+                if name not in have:
+                    self.db.execute(f"ALTER TABLE {table} ADD COLUMN {name} {decl}")
 
     def close(self):
         self.db.close()
@@ -226,6 +245,32 @@ class Store:
 
     def health_all(self) -> list[sqlite3.Row]:
         return self.db.execute("SELECT * FROM source_health ORDER BY source").fetchall()
+
+    def health_changes(self, threshold: int = 2) -> dict:
+        """Источники, о состоянии которых нужно сообщить.
+
+        Возвращает два списка: «сломались» и «починились». Сообщаем один раз
+        на поломку и один раз на восстановление — иначе при трёхчасовых
+        проверках предупреждение приходило бы восемь раз в сутки.
+
+        Порог в два прогона подряд выбран не случайно: 26 сентября пять
+        источников упали в одном прогоне и сами поднялись к следующему.
+        Сообщать о таком — приучать не читать предупреждения.
+        """
+        broke, fixed = [], []
+        for r in self.db.execute("SELECT * FROM source_health"):
+            d = dict(r)
+            streak = d.get("fail_streak") or 0
+            alerted = d.get("alerted_streak") or 0
+            if streak >= threshold and not alerted:
+                broke.append(d)
+            elif streak == 0 and alerted:
+                fixed.append(d)
+        return {"broke": broke, "fixed": fixed}
+
+    def mark_health_alerted(self, source: str, streak: int) -> None:
+        self.db.execute("UPDATE source_health SET alerted_streak=? WHERE source=?",
+                        (streak, source))
 
     def start_run(self) -> int:
         return self.db.execute("INSERT INTO runs (started_at) VALUES (?)",

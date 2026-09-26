@@ -132,6 +132,12 @@ def cmd_run(cfg: Config, args) -> int:
         if st:
             print(f"Сбор: {st['sources_ok']} ок / {st['sources_failed']} сбоев · "
                   f"новых {st['new']}, изменений {st['changed']}")
+            # Без этого «5 сбоев» остаётся загадкой: журнал агента на сервере
+            # сборки не печатается, и понять, какие источники молчат, нельзя.
+            for f in st.get("failed") or []:
+                print(f"  ! {f['id']}: {f['error']}")
+            for sid in st.get("skipped_proxy") or []:
+                print(f"  ~ {sid}: пропущен — нет пути к российскому IP")
         print(f"{out['label']}: {out['items']} документов "
               f"(срочных {out['critical']}, важных {out['high']})")
         if out.get("filtered_out"):

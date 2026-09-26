@@ -30,7 +30,10 @@ class Agent:
     def collect(self) -> dict:
         run_id = self.store.start_run()
         stats = {"sources_ok": 0, "sources_failed": 0, "items": 0,
-                 "new": 0, "changed": 0, "skipped_proxy": []}
+                 "new": 0, "changed": 0, "skipped_proxy": [],
+                 # Имена, а не только счётчик: «5 сбоев» не говорит, каких
+                 # именно, а на сервере журнал агента не печатается вовсе.
+                 "failed": []}
 
         for src in enabled(self.cfg):
             # Источнику нужен российский адрес. Путей к нему два — ретранслятор
@@ -49,6 +52,7 @@ class Agent:
             res = src.run(self.http)
             if not res.ok:
                 stats["sources_failed"] += 1
+                stats["failed"].append({"id": src.id, "error": res.error or "без описания"})
                 self.store.health(src.id, False, res.error)
                 log.warning("%s: ОШИБКА %s", src.id, res.error)
                 continue
@@ -83,6 +87,65 @@ class Agent:
                                  v.matched, v.rationale)
         self.store.db.commit()
         return len(rows)
+
+    # ---------- состояние источников ----------
+    def notify_health(self, dry_run: bool = False) -> str | None:
+        """Сообщает, когда источник замолчал надолго или снова заговорил.
+
+        Это предупреждение для того, кто обслуживает агента, а не для
+        руководителя: в отчёт состояние источников намеренно не попадает.
+        Канал — Telegram: сообщение уходит без сторонних библиотек и не
+        зависит от того, работает ли push.
+
+        Нужно потому, что молчащий источник не отличим от спокойного дня.
+        26 сентября пять источников упали в одном прогоне, и узналось это
+        только при разборе журналов вручную.
+        """
+        threshold = int(self.cfg.thresholds.get("source_fail_alert", 2))
+        ch = self.store.health_changes(threshold)
+        if not ch["broke"] and not ch["fixed"]:
+            return None
+
+        # Текст ошибки приходит из исключения и может содержать < > &.
+        # Без экранирования Telegram отвергнет всё сообщение целиком,
+        # и предупреждение не дойдёт именно тогда, когда оно нужнее всего.
+        from html import escape as _e
+
+        lines = []
+        for h in ch["broke"]:
+            lines.append(f"<b>{_e(squeeze(h['source'], 40))}</b> — молчит "
+                         f"{h['fail_streak']} прогона подряд\n"
+                         f"<i>{_e(squeeze(h.get('error_text') or 'без описания', 120))}</i>")
+        for h in ch["fixed"]:
+            lines.append(f"<b>{_e(squeeze(h['source'], 40))}</b> — снова отвечает")
+
+        head = "Регмонитор: состояние источников"
+        text = f"<b>{head}</b>\n\n" + "\n\n".join(lines)
+        if ch["broke"]:
+            text += ("\n\nОстальные источники продолжают работать. "
+                     "Подробности: <code>python3 -m regwatch doctor</code>")
+
+        if dry_run:
+            return f"состояние источников: dry-run, {len(lines)} изменений"
+
+        try:
+            telegram.send_message(text)
+            note = (f"сломались: {len(ch['broke'])}, "
+                    f"починились: {len(ch['fixed'])}")
+        except Exception as e:
+            # Не сумели предупредить — это само по себе плохо, но прогон
+            # ронять нельзя: отчёт важнее служебного сообщения.
+            log.warning("не удалось сообщить о состоянии источников: %s", e)
+            return f"состояние источников: не отправлено ({type(e).__name__})"
+
+        # Отмечаем ПОСЛЕ отправки: если сообщение не ушло, попробуем снова
+        # в следующий прогон, а не замолчим навсегда.
+        for h in ch["broke"]:
+            self.store.mark_health_alerted(h["source"], h["fail_streak"])
+        for h in ch["fixed"]:
+            self.store.mark_health_alerted(h["source"], 0)
+        self.store.db.commit()
+        return note
 
     # ---------- отчёт ----------
     def build(self, alert_mode: bool = False):
@@ -130,6 +193,14 @@ class Agent:
     def run(self, alert_mode: bool = False, dry_run: bool = False,
             skip_collect: bool = False, mark: bool = True) -> dict:
         stats = {} if skip_collect else self.collect()
+
+        # До всего остального: срочный прогон без событий выходит из run()
+        # досрочно, и предупреждение о молчащем источнике не ушло бы никогда.
+        if not skip_collect and telegram.configured():
+            note = self.notify_health(dry_run=dry_run)
+            if note:
+                log.info("%s", note)
+
         buckets, rows, md, html, event_ids, label, dls, health_rows = self.build(alert_mode)
         total = sum(len(v) for v in buckets.values())
 

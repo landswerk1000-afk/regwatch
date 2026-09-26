@@ -6,7 +6,9 @@
     "alert_urgencies": [
       "critical"
     ],
-    "max_items_per_report": 60
+    "max_items_per_report": 60,
+    "source_fail_alert": 2,
+    "_source_fail_alert": "сколько прогонов подряд источник должен молчать, прежде чем сообщить"
   },
   "proxy": {
     "url": "",

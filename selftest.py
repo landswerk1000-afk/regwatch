@@ -693,6 +693,78 @@ check("самый свежий первым в указателе",
 _sh.rmtree(_box)
 
 
+# ------------------------------- предупреждение о молчащих источниках
+section("14. Молчащий источник не должен остаться незамеченным")
+import tempfile as _tf3, shutil as _sh3
+from regwatch.agent import Agent as _Agent
+from regwatch.deliver import telegram as _tg
+
+_box3 = Path(_tf3.mkdtemp())
+_cfg3 = Config.load(Path(__file__).resolve().parent / "config.json")
+_cfg3.data["db_path"] = str(_box3 / "t.db")
+_sent3 = []
+_real_send, _real_conf = _tg.send_message, _tg.configured
+_tg.send_message = lambda text, **kw: _sent3.append(text)
+_tg.configured = lambda: True
+_a3 = _Agent(_cfg3)
+
+
+def _fail3(src, times, err="нет ответа"):
+    for _ in range(times):
+        _a3.store.health(src, False, err)
+    _a3.store.db.commit()
+
+
+# Порог в два прогона выбран по случаю 26 сентября: пять источников упали
+# в одном прогоне и сами поднялись к следующему. Сообщать о таком — приучать
+# не читать предупреждения.
+_fail3("sozd", 1)
+_sent3.clear(); _a3.notify_health()
+check("один сбой не тревожит", len(_sent3) == 0)
+
+_fail3("sozd", 1)
+_sent3.clear(); _a3.notify_health()
+check("два сбоя подряд — сообщение ушло", len(_sent3) == 1)
+check("в сообщении назван источник", _sent3 and "sozd" in _sent3[0])
+
+_fail3("sozd", 1)
+_sent3.clear(); _a3.notify_health()
+check("пока лежит — не повторяемся", len(_sent3) == 0)
+
+_a3.store.health("sozd", True); _a3.store.db.commit()
+_sent3.clear(); _a3.notify_health()
+check("о восстановлении сообщаем", len(_sent3) == 1 and "снова отвечает" in _sent3[0])
+_sent3.clear(); _a3.notify_health()
+check("о восстановлении — один раз", len(_sent3) == 0)
+
+# Сбой отправки не должен ронять прогон: отчёт важнее служебного сообщения,
+# но и замолчать навсегда нельзя — в следующий прогон пробуем снова.
+_fail3("minfin", 2)
+
+
+def _boom3(text, **kw):
+    raise RuntimeError("телеграм недоступен")
+
+
+_tg.send_message = _boom3
+_note3 = _a3.notify_health()
+check("сбой отправки не роняет прогон", _note3 and "не отправлено" in _note3)
+_tg.send_message = lambda text, **kw: _sent3.append(text)
+_sent3.clear(); _a3.notify_health()
+check("после сбоя отправки пробует снова", len(_sent3) == 1)
+
+# Текст ошибки приходит из исключения и может содержать разметку.
+_a3.store.health("minfin", True); _a3.store.db.commit(); _a3.notify_health()
+_fail3("cbr_news", 2, 'HTTPError: <b>500</b> & "сломалось"')
+_sent3.clear(); _a3.notify_health()
+_t3 = _sent3[0] if _sent3 else ""
+check("опасный текст ошибки экранирован",
+      "<b>500</b>" not in _t3 and "&lt;b&gt;500" in _t3)
+
+_tg.send_message, _tg.configured = _real_send, _real_conf
+_a3.close(); _sh3.rmtree(_box3)
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""
