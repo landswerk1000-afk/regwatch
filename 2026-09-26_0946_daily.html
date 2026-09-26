@@ -1,0 +1,149 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Мониторинг регулирования частных инвестиций — Отчёт за 26.09.2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;padding:0;background:#F6F7F8;
+    font-family:'Inter','Inter var',-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#717172;
+    font-size:15px;line-height:1.55;
+    -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+  .sheet{max-width:780px;margin:0 auto;padding:36px 22px 52px;}
+  .num{font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;}
+  a{color:#197b88;text-decoration:none;}
+  a:hover{text-decoration:underline;}
+
+  /* ---------- шапка: светлая, как на fgiis.ru ---------- */
+  .head{background:#ffffff;border:1px solid #dcdfe3;
+    border-bottom:none;padding:34px 36px 26px;}
+  .eyebrow{font-size:10px;font-weight:600;letter-spacing:2.4px;
+    text-transform:uppercase;color:#197b88;margin-bottom:14px;}
+  .head h1{margin:0 0 6px;font-size:29px;line-height:1.16;font-weight:700;
+    color:#313132;letter-spacing:-0.6px;}
+  .head .org{font-size:13px;color:#717172;margin-bottom:16px;}
+  .head .meta{font-size:12px;color:#6f7074;padding-top:14px;
+    border-top:1px solid #e8ebee;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;}
+  .rule{height:3px;background:#06b6cb;}
+
+  /* ---------- сводка ---------- */
+  .panel{background:#ffffff;border:1px solid #dcdfe3;border-top:none;}
+  .verdict{padding:22px 36px;font-size:16px;line-height:1.5;
+    color:#313132;font-weight:500;border-bottom:1px solid #e8ebee;}
+  .figures{display:flex;}
+  .fig{flex:1;padding:20px 10px 22px;text-align:center;
+    border-left:1px solid #e8ebee;}
+  .fig:first-child{border-left:none;}
+  .fig .v{font-size:32px;font-weight:700;line-height:1;letter-spacing:-1.2px;}
+  .fig .l{font-size:9.5px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;
+    color:#6f7074;margin-top:9px;}
+  .fig.zero{opacity:.3;}
+  .orgs{padding:15px 36px;border-top:1px solid #e8ebee;
+    background:#eef1f4;font-size:12.5px;color:#717172;}
+  .orgs b{font-weight:600;}
+  .orgs .sep{color:#dcdfe3;margin:0 10px;}
+
+  /* ---------- сроки ---------- */
+  .dl{margin:28px 0 0;background:#ffffff;border:1px solid #dcdfe3;
+    border-top:3px solid #06b6cb;}
+  .dl h2{margin:0;padding:15px 24px;font-size:10.5px;font-weight:700;
+    letter-spacing:1.8px;text-transform:uppercase;color:#313132;
+    border-bottom:1px solid #e8ebee;}
+  .dl .row{display:flex;gap:18px;padding:13px 24px;
+    border-top:1px solid #e8ebee;}
+  .dl .row:first-of-type{border-top:none;}
+  .dl .when{flex:0 0 104px;font-size:13px;font-weight:600;
+    color:#313132;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;}
+  .dl .when span{display:block;font-weight:400;font-size:11.5px;
+    color:#6f7074;margin-top:2px;}
+  .dl .soon span{color:#a65640;font-weight:600;}
+  .dl .what{font-size:13.5px;color:#313132;}
+  .dl .contact{font-size:12px;color:#6f7074;margin-top:3px;}
+
+  /* ---------- разделы ---------- */
+  .sec{display:flex;align-items:baseline;gap:12px;margin:36px 0 14px;
+    padding-bottom:9px;border-bottom:1px solid #dcdfe3;}
+  .sec .t{font-size:10.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;}
+  .sec .n{font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;}
+  .sec .line{flex:1;}
+
+  /* ---------- карточка ---------- */
+  .card{background:#ffffff;border:1px solid #dcdfe3;border-left:2px solid;
+    padding:20px 24px;margin-bottom:10px;}
+  .card .top{font-size:10.5px;margin-bottom:10px;display:flex;flex-wrap:wrap;
+    align-items:center;gap:9px;}
+  .card .org{font-weight:700;letter-spacing:.9px;text-transform:uppercase;}
+  .card .dot{color:#dcdfe3;}
+  .card .when{color:#6f7074;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;}
+  .card .ev{color:#6f7074;}
+  .card h3{margin:0 0 11px;font-size:16px;line-height:1.4;font-weight:600;
+    color:#313132;letter-spacing:-0.1px;}
+  .card .stage{display:inline-block;font-size:12.5px;color:#313132;
+    background:#eef1f4;border-left:2px solid #06b6cb;
+    padding:6px 12px;margin-bottom:11px;}
+  .card .stage.wide{display:block;}
+  .card .code{display:inline-block;font-size:10.5px;font-weight:700;
+    color:#197b88;margin-right:9px;font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;}
+  .card .sum{font-size:13.5px;line-height:1.6;color:#717172;}
+  .card .chips{margin-top:13px;font-size:10.5px;color:#197b88;}
+  .card .chip{margin-right:14px;white-space:nowrap;}
+  .card .note{margin-top:13px;padding:10px 14px;background:#e7f8fa;
+    border-left:2px solid #06b6cb;font-size:12.5px;color:#313132;font-weight:500;}
+  .card .src{margin-top:14px;font-size:12.5px;font-weight:600;}
+
+  /* ---------- подвал ---------- */
+  .foot{margin-top:36px;padding-top:18px;border-top:2px solid #06b6cb;
+    font-size:11px;line-height:1.75;color:#6f7074;}
+  .foot b{color:#313132;font-weight:600;}
+  .empty{background:#ffffff;border:1px solid #dcdfe3;border-top:none;
+    padding:38px;text-align:center;font-size:14.5px;color:#717172;}
+
+  /* ---------- печать и PDF ---------- */
+  @page{size:A4;margin:14mm 12mm 16mm;}
+  @media print{
+    html,body{background:#fff;font-size:10.5pt;}
+    .sheet{max-width:none;padding:0;}
+    /* Подложки и линии — часть фирменного стиля, а не украшение:
+       без этого правила браузер печатает их белыми. */
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .card,.dl .row,.dl{break-inside:avoid;page-break-inside:avoid;}
+    .sec{break-after:avoid;page-break-after:avoid;}
+    .no-print{display:none!important;}
+    /* Адрес первоисточника на бумаге по ссылке не откроешь. */
+    a.src::after{content:" (" attr(href) ")";font-weight:400;font-size:9pt;
+      color:#6f7074;word-break:break-all;}
+  }
+</style></head>
+<body><div class="sheet">
+<div class="head">
+ <div class="eyebrow">Мониторинг регулирования</div>
+ <h1>Частные инвестиции</h1>
+ <div class="org">Банк России &middot; Минфин &middot; Государственная Дума &middot;
+  Совет Федерации</div>
+ <div class="meta">Отчёт за 26.09.2026 &nbsp;·&nbsp; сформировано
+  26.09.2026 в 09:46 МСК</div>
+</div><div class="rule"></div>
+<div class="panel">
+<div class="verdict">4 документа к сведению. По 4 документам истекает срок подачи замечаний.</div>
+<div class="figures">
+<div class="fig zero"><div class="v num" style="color:#a65640;">0</div><div class="l">требует решения</div></div>
+<div class="fig zero"><div class="v num" style="color:#8a6a2f;">0</div><div class="l">важное</div></div>
+<div class="fig"><div class="v num" style="color:#197b88;">4</div><div class="l">к сведению</div></div>
+<div class="fig"><div class="v num" style="color:#197b88;">4</div><div class="l">всего</div></div>
+</div>
+<div class="orgs"><b style="color:#717172;">СМИ</b>&nbsp;<span class="num">2</span><span class="sep">|</span><b style="color:#2d5266;">Минфин</b>&nbsp;<span class="num">1</span><span class="sep">|</span><b style="color:#2f5d55;">Правительство</b>&nbsp;<span class="num">1</span></div>
+</div>
+<div class="dl"><h2>Сроки подачи замечаний</h2>
+<div class="row"><div class="when soon">29.09.2026 <span>через 3 дня</span></div><div class="what"><a href="https://www.cbr.ru/project_na/?tab.current=t2#a_6826">Проект указания Банка России «О составе информации, подлежащей хранению и предоставлению в соответствии с частями 1 и 2 статьи 40 Федерального закона…</a><div class="contact">PashkovSYU@cbr.ru</div></div></div>
+<div class="row"><div class="when">05.10.2026 <span>через 9 дней</span></div><div class="what"><a href="https://www.cbr.ru/project_na/?tab.current=t2#a_6829">Проект указания Банка России «О внесении изменений в Указание Банка России от 23 декабря 2021 года № 6032-У»</a><div class="contact">kucherovai@cbr.ru</div></div></div>
+<div class="row"><div class="when">09.10.2026 <span>через 13 дней</span></div><div class="what"><a href="https://www.cbr.ru/project_na/?tab.current=t2#a_6831">Проект указания Банка России «О внесении изменений в Положение Банка России от 20 апреля 2021 года № 757-П»</a><div class="contact">erokhingi@cbr.ru</div></div></div>
+<div class="row"><div class="when">09.10.2026 <span>через 13 дней</span></div><div class="what"><a href="https://www.cbr.ru/project_na/?tab.current=t2#a_6830">Проект положения Банка России «Об установлении обязательных для некредитных финансовых организаций требований к операционной надежности при осуществл…</a><div class="contact">erokhingi@cbr.ru</div></div></div>
+</div>
+<div class="sec"><span class="t" style="color:#197b88;">К сведению</span><span class="n num" style="color:#197b88;">4</span><span class="line"></span></div>
+<div class="card" style="border-left-color:#197b88;"><div class="top"><span class="org" style="color:#2d5266;">Минфин</span><span class="dot">·</span><span class="ev">новый</span></div><h3>Алексей Яковлев: цифровой анализ — один из краеугольных камней регулирования цифровых валют</h3><div class="chips"><span class="chip">ЦФА, цифровые активы, криптовалюта</span></div><div class="src"><a class="src" href="https://minfin.gov.ru/ru/press-center/?id_4=40645-aleksei_yakovlev_tsifrovoi_analiz__odin_iz_kraeugolnykh_kamnei_regulirovaniya_tsifrovykh_valyut">Первоисточник →</a></div></div>
+<div class="card" style="border-left-color:#197b88;"><div class="top"><span class="org" style="color:#2f5d55;">Правительство</span><span class="dot">·</span><span class="when">24 сентября 2026</span><span class="dot">·</span><span class="ev">новый</span></div><h3>Приказ Федерального агентства железнодорожного транспорта от 14.04.2026 № 411 &quot;Об утверждении примерной формы договора аренды земельного участка, являющегося федеральной собственностью и предоставленного открытому акционерному обществу &quot;Российские железные дороги&quot;</h3><div><span class="stage">опубликован</span></div><div class="chips"><span class="chip">Ценные бумаги, эмиссия, IPO</span></div><div class="src"><a class="src" href="http://publication.pravo.gov.ru/document/0001202609250023">Первоисточник →</a></div></div>
+<div class="card" style="border-left-color:#197b88;"><div class="top"><span class="org" style="color:#717172;">СМИ</span><span class="dot">·</span><span class="when">25 сентября 2026</span><span class="dot">·</span><span class="ev">новый</span></div><h3>Инициативу по налогу для ПИФов распространят только на фонды для «квалов»</h3><div class="sum">Инициатива Минфина, обязывающая ПИФы платить налог на прибыль в 15%, касается только закрытых и интервальных фондов, предназначенных для квалифицированных инвесторов, сообщил «Интерфаксу» источник, знакомый с проектом поправок. По словам собеседника агентства, вся сумма налога пойдет в федеральный бюджет.</div><div class="chips"><span class="chip">Квалифицированный инвестор</span><span class="chip">ПИФ / БПИФ / ЗПИФ</span></div><div class="src"><a class="src" href="https://www.kommersant.ru/doc/8974886">Первоисточник →</a></div></div>
+<div class="card" style="border-left-color:#197b88;"><div class="top"><span class="org" style="color:#717172;">СМИ</span><span class="dot">·</span><span class="when">25 сентября 2026</span><span class="dot">·</span><span class="ev">новый</span></div><h3>«Финам» откроет доступ к биржам Сингапура и Таиланда</h3><div class="sum">Финансовая группа «Финам» с 1 октября предоставит квалифицированным инвесторам доступ к Singapore Exchange (SGX) и Stock Exchange of Thailand (SET). Инструменты этих площадок будут доступны инвесторам через счет «Сегрегированный глобал».</div><div class="chips"><span class="chip">Квалифицированный инвестор</span><span class="chip">Биржа и организованные торги</span></div><div class="src"><a class="src" href="https://www.kommersant.ru/doc/8974935">Первоисточник →</a></div></div>
+<div class="foot"><b>Источники:</b> Банк России, Министерство финансов, Государственная Дума, Совет Федерации, портал официального опубликования, профильные СМИ.<br>Отчёт сформирован автоматически; сведения приведены по данным первоисточников на момент сбора.</div>
+</div></body></html>
