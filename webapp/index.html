@@ -175,7 +175,17 @@
     var j = s.toJSON();
     $('subJson').textContent = JSON.stringify({
       endpoint: j.endpoint, keys: j.keys,
-      device: (isIOS ? 'iPhone' : navigator.platform || 'устройство')
+      // navigator.platform отдаёт техническое «MacIntel» — в списке устройств
+      // такое читается как сбой. Приводим к человеческому виду.
+      device: (function () {
+        if (isIOS) return /iPad/.test(navigator.userAgent) ? 'iPad' : 'iPhone';
+        var p = navigator.platform || '';
+        if (/Mac/.test(p)) return 'Mac';
+        if (/Win/.test(p)) return 'Windows';
+        if (/Linux|X11/.test(p)) return 'Linux';
+        if (/Android/.test(navigator.userAgent)) return 'Android';
+        return p || 'устройство';
+      })()
     }, null, 1);
     $('codeCard').classList.remove('hidden');
   }
