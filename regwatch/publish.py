@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -75,16 +76,33 @@ def _run(args, cwd=None, token=None, timeout=120):
     return p.stdout
 
 
+# Имя отчёта, которое даёт agent.run(): 2026-09-27_0946_daily.html
+REPORT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}_(daily|alert)\.html$")
+
+
 def _sync(src: Path, dst: Path) -> None:
-    """Переносит webapp → рабочую копию, убирая то, чего больше нет."""
-    for old in dst.iterdir():
-        if old.name == ".git":
-            continue
-        shutil.rmtree(old) if old.is_dir() else old.unlink()
+    """Обновляет файлы сайта в рабочей копии.
+
+    ВАЖНО: трогает только сайт. Прежняя версия чистила рабочую копию
+    подчистую и клала туда одно содержимое webapp/. Это было верно, пока
+    в репозитории лежал только сайт; после переезда агента туда же такой
+    прогон снёс бы и код, и файл расписания — агент перестал бы
+    запускаться вовсе. Не выстрелило лишь потому, что на сервере
+    публикация отключена, а локально шли сухие прогоны.
+
+    Поэтому: файлы из webapp/ добавляем и обновляем, а удаляем ровно одно —
+    отчёты, выпавшие из окна. Всё остальное в репозитории не наше.
+    """
+    keep = set()
     for f in src.iterdir():
-        if f.name.startswith("."):
+        if f.name.startswith(".") or f.is_dir():
             continue
-        shutil.copytree(f, dst / f.name) if f.is_dir() else shutil.copy2(f, dst / f.name)
+        keep.add(f.name)
+        shutil.copy2(f, dst / f.name)
+
+    for old in dst.iterdir():
+        if old.is_file() and REPORT_NAME.match(old.name) and old.name not in keep:
+            old.unlink()
 
 
 def publish(root: Path) -> dict:

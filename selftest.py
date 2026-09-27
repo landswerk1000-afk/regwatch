@@ -967,6 +967,43 @@ check("дата в списке по-человечески",
 check("битое имя не роняет список", _hs17("мусор") == "мусор")
 
 
+# --------------------- публикация не должна сносить код из репозитория
+section("18. Публикация трогает только сайт")
+import tempfile as _tf18, shutil as _sh18
+from regwatch.publish import _sync as _sync18
+
+# Публикация писалась, когда в репозитории лежал один сайт: она чистила
+# рабочую копию подчистую и клала туда содержимое webapp/. После переезда
+# агента в тот же репозиторий такой прогон снёс бы и код, и файл расписания —
+# агент перестал бы запускаться вовсе. Не выстрелило лишь потому, что
+# на сервере публикация отключена, а локально шли сухие прогоны.
+_b18 = Path(_tf18.mkdtemp())
+_repo18, _web18 = _b18 / "repo", _b18 / "webapp"
+_repo18.mkdir(parents=True); _web18.mkdir(parents=True)
+(_repo18 / ".git").mkdir()
+(_repo18 / "regwatch").mkdir()
+(_repo18 / "regwatch" / "agent.py").write_text("код", encoding="utf-8")
+(_repo18 / ".github").mkdir()
+(_repo18 / ".github" / "wf.yml").write_text("расписание", encoding="utf-8")
+for _n18 in ("README.md", "selftest.py", "index.html",
+             "2026-09-01_0900_daily.html", "2026-09-26_0946_daily.html"):
+    (_repo18 / _n18).write_text("старое", encoding="utf-8")
+for _n18 in ("index.html", "config.js",
+             "2026-09-26_0946_daily.html", "2026-09-27_1800_daily.html"):
+    (_web18 / _n18).write_text("новое", encoding="utf-8")
+
+_sync18(_web18, _repo18)
+_names18 = {p.name for p in _repo18.iterdir()}
+check("код агента переживает публикацию", (_repo18 / "regwatch" / "agent.py").exists())
+check("файл расписания переживает публикацию", (_repo18 / ".github" / "wf.yml").exists())
+check("README и тесты целы",
+      (_repo18 / "README.md").exists() and (_repo18 / "selftest.py").exists())
+check("сайт обновляется", (_repo18 / "index.html").read_text(encoding="utf-8") == "новое")
+check("новый отчёт добавляется", "2026-09-27_1800_daily.html" in _names18)
+check("выпавший из окна отчёт удаляется", "2026-09-01_0900_daily.html" not in _names18)
+_sh18.rmtree(_b18)
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""
