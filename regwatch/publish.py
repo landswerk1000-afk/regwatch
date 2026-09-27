@@ -148,6 +148,10 @@ def publish(root: Path) -> dict:
     # Личность нужна только этому репозиторию — глобальные настройки не трогаем.
     _run(["config", "user.email", "regwatch@local"], cwd=work)
     _run(["config", "user.name", "Регмонитор"], cwd=work)
+    # Отчёты — мелочь, но отправка идёт тем же путём, что и база состояния,
+    # а та на 4.5 МБ обрывалась с «RPC failed; HTTP 400».
+    _run(["config", "http.postBuffer", "524288000"], cwd=work)
+    _run(["config", "http.version", "HTTP/1.1"], cwd=work)
 
     _sync(webapp, work)
     _run(["add", "-A"], cwd=work)

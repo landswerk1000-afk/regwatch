@@ -272,6 +272,72 @@ class Store:
         self.db.execute("UPDATE source_health SET alerted_streak=? WHERE source=?",
                         (streak, source))
 
+    def prune(self, noise_days: int = 14, max_days: int = 180,
+              cap: int = 8000, noise_below: float = 0.2) -> dict:
+        """Убирает балласт, чтобы база не росла без предела.
+
+        База лежит в репозитории и отправляется туда после каждого прогона.
+        На 4.5 МБ отправка уже начала обрываться с HTTP 400, а растёт она
+        примерно на 380 документов в сутки — через месяц стала бы неотправимой.
+
+        83% объёма — ленты СМИ и портал опубликования: они оцениваются в ноль
+        и хранятся исключительно ради дедупликации. Ленты обновляются за дни,
+        поэтому держать их две недели достаточно. Если такой документ всё же
+        вернётся, он снова получит ноль и ни в отчёт, ни в уведомление
+        не попадёт — потеря нулевая.
+
+        Документы с ненулевой оценкой живут долго: это история, ради которой
+        всё и затевалось.
+        """
+        before = self.db.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+
+        def drop(where: str, params=()) -> int:
+            ids = [r[0] for r in self.db.execute(
+                f"SELECT i.id FROM items i LEFT JOIN scores s ON s.item_id=i.id "
+                f"WHERE {where}", params)]
+            if not ids:
+                return 0
+            # Событие без документа осиротеет, поэтому порядок важен.
+            for chunk in (ids[i:i + 400] for i in range(0, len(ids), 400)):
+                q = ",".join("?" * len(chunk))
+                self.db.execute(f"DELETE FROM events WHERE item_id IN ({q})", chunk)
+                self.db.execute(f"DELETE FROM scores WHERE item_id IN ({q})", chunk)
+                self.db.execute(f"DELETE FROM items  WHERE id      IN ({q})", chunk)
+            return len(ids)
+
+        # Неразосланное не трогаем ни при каких условиях: иначе документ
+        # исчезнет, так и не попав к человеку.
+        safe = ("AND NOT EXISTS (SELECT 1 FROM events e "
+                "WHERE e.item_id = i.id AND (e.reported = 0 OR e.alerted = 0))")
+
+        noise = drop(
+            f"COALESCE(s.relevance, 0) < ? "
+            f"AND i.first_seen < datetime('now', ?) {safe}",
+            (noise_below, f"-{noise_days} days"))
+        old = drop(f"i.first_seen < datetime('now', ?) {safe}", (f"-{max_days} days",))
+
+        # Последняя мера, если поток окажется плотнее расчётного.
+        over = 0
+        left = self.db.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        if left > cap:
+            ids = [r[0] for r in self.db.execute(
+                "SELECT i.id FROM items i LEFT JOIN scores s ON s.item_id=i.id "
+                "WHERE COALESCE(s.relevance,0) < ? "
+                "AND NOT EXISTS (SELECT 1 FROM events e WHERE e.item_id=i.id "
+                "                AND (e.reported=0 OR e.alerted=0)) "
+                "ORDER BY i.first_seen LIMIT ?", (noise_below, left - cap))]
+            if ids:
+                q = ",".join("?" * len(ids))
+                self.db.execute(f"DELETE FROM events WHERE item_id IN ({q})", ids)
+                self.db.execute(f"DELETE FROM scores WHERE item_id IN ({q})", ids)
+                self.db.execute(f"DELETE FROM items  WHERE id      IN ({q})", ids)
+                over = len(ids)
+
+        self.db.commit()
+        after = self.db.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        return {"before": before, "after": after, "noise": noise,
+                "old": old, "over_cap": over}
+
     def start_run(self) -> int:
         return self.db.execute("INSERT INTO runs (started_at) VALUES (?)",
                                (iso(now_utc()),)).lastrowid

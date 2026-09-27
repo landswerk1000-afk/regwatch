@@ -1004,6 +1004,62 @@ check("выпавший из окна отчёт удаляется", "2026-09-0
 _sh18.rmtree(_b18)
 
 
+# ----------------------------- чистка базы, чтобы она не росла без предела
+section("19. Чистка базы не трогает нужное")
+import tempfile as _tf19, shutil as _sh19
+from regwatch.store import Store as _St19
+
+# База лежит в репозитории и уходит туда каждый прогон. На 4.5 МБ отправка
+# начала обрываться с HTTP 400, а растёт она примерно на 380 документов
+# в сутки. 83%% объёма — ленты СМИ с нулевой оценкой: они нужны только для
+# дедупликации, а ленты обновляются за дни.
+_b19 = Path(_tf19.mkdtemp())
+_st19 = _St19(_b19 / "t.db")
+
+
+def _add19(n, rel, days_old, reported=True, tag=""):
+    for i in range(n):
+        iid = f"s:{rel}:{days_old}:{tag}{i}"
+        _st19.db.execute(
+            "INSERT INTO items (id,source,authority,kind,external_id,url,title,"
+            "first_seen,last_seen,content_hash) VALUES (?,?,?,?,?,?,?,"
+            "datetime('now', ?),datetime('now'),?)",
+            (iid, "s", "СМИ", "news", str(i), "u", "заголовок",
+             f"-{days_old} days", f"h{iid}"))
+        _st19.db.execute("INSERT INTO scores (item_id,relevance,urgency,topics,"
+                         "matched,rationale,scored_at) VALUES (?,?,?,?,?,?,datetime('now'))",
+                         (iid, rel, "low", "[]", "[]", ""))
+        _st19.db.execute("INSERT INTO events (item_id,event_type,detected_at,reported,alerted)"
+                         " VALUES (?,?,datetime('now'),?,?)",
+                         (iid, "new", 1 if reported else 0, 1 if reported else 0))
+    _st19.db.commit()
+
+
+_add19(30, 0.0, 40)      # старый шум — убрать
+_add19(10, 0.0, 3)       # свежий шум — оставить
+_add19(12, 0.7, 40)      # старое, но значимое — оставить
+_add19(5, 0.0, 40, reported=False, tag="p")  # старый шум, но человеку не показан
+
+_res19 = _st19.prune(noise_days=14, max_days=180)
+_left19 = {r[0] for r in _st19.db.execute("SELECT id FROM items")}
+check("старый шум убран", _res19["noise"] == 30, f"убрано {_res19['noise']}")
+check("свежий шум сохранён",
+      sum(1 for i in _left19 if i.startswith("s:0.0:3:")) == 10)
+check("значимое сохранено, даже старое",
+      sum(1 for i in _left19 if i.startswith("s:0.7:")) == 12)
+# Неразосланное трогать нельзя ни при каких условиях: иначе документ
+# исчезнет, так и не попав к человеку.
+check("неразосланное не удалено",
+      _st19.db.execute("SELECT COUNT(*) FROM events WHERE reported=0").fetchone()[0] == 5)
+check("осиротевших оценок нет",
+      _st19.db.execute("SELECT COUNT(*) FROM scores s LEFT JOIN items i "
+                       "ON i.id=s.item_id WHERE i.id IS NULL").fetchone()[0] == 0)
+check("осиротевших событий нет",
+      _st19.db.execute("SELECT COUNT(*) FROM events e LEFT JOIN items i "
+                       "ON i.id=e.item_id WHERE i.id IS NULL").fetchone()[0] == 0)
+_st19.close(); _sh19.rmtree(_b19)
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""

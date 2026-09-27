@@ -176,6 +176,11 @@ jobs:
           cp /tmp/regwatch.db "$tmp/regwatch.db"
           cd "$tmp"
           git init -q
+          # База — двоичный файл в несколько мегабайт. На 4.5 МБ отправка
+          # начала обрываться с «RPC failed; HTTP 400»: не хватало буфера,
+          # а HTTP/2 рвал соединение на полпути.
+          git config http.postBuffer 524288000
+          git config http.version HTTP/1.1
           git checkout -q -b "$STATE_BRANCH"
           git add regwatch.db
           git -c user.name="Регмонитор" -c user.email="regwatch@local" \

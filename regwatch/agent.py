@@ -353,4 +353,23 @@ class Agent:
                     "UPDATE events SET reported=1, alerted=1 WHERE reported=0 OR alerted=0")
                 out["filtered_out"] = max(cur.rowcount - len(event_ids), 0)
         self.store.db.commit()
+
+        # Чистка — после рассылки, не до неё: пока документ не показан
+        # человеку, трогать его нельзя. Внутри prune это тоже проверяется,
+        # но порядок вызова — первая линия защиты, а не вторая.
+        if mark and not dry_run:
+            try:
+                # Пояснения в настройках начинаются с подчёркивания — в функцию
+                # они уйти не должны, иначе вызов упадёт на лишнем аргументе.
+                opts = {k: v for k, v in (self.cfg.data.get("prune") or {}).items()
+                        if not k.startswith("_")}
+                pr = self.store.prune(**opts)
+                if pr["before"] != pr["after"]:
+                    self.store.db.execute("VACUUM")
+                    out["pruned"] = pr
+                    log.info("чистка базы: %d → %d документов",
+                             pr["before"], pr["after"])
+            except Exception as e:
+                # Не убрали мусор — неприятно, но отчёт уже ушёл.
+                log.warning("чистка базы не удалась: %s: %s", type(e).__name__, e)
         return out
