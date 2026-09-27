@@ -213,6 +213,9 @@ STYLE = f"""
     font-size:15px;line-height:1.55;
     -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}}
   .sheet{{max-width:780px;margin:0 auto;padding:36px 22px 52px;}}
+  /* Заголовки документов доходят до 400 символов, адреса до 204 — без этого
+     одно длинное слово или ссылка растягивают страницу по горизонтали. */
+  .card h3, .card .sum, .dl .what, .verdict{{overflow-wrap:anywhere;}}
   .num{{{B.FONT_NUMERIC}}}
   a{{color:{C['accent_ink']};text-decoration:none;}}
   a:hover{{text-decoration:underline;}}
@@ -241,10 +244,25 @@ STYLE = f"""
   .fig .l{{font-size:9.5px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;
     color:{C['ink_45']};margin-top:9px;}}
   .fig.zero{{opacity:.3;}}
-  .orgs{{padding:15px 36px;border-top:1px solid {C['line_soft']};
-    background:{C['surface']};font-size:12.5px;color:{C['ink_65']};}}
-  .orgs b{{font-weight:600;}}
-  .orgs .sep{{color:{C['line']};margin:0 10px;}}
+  .orgs{{padding:13px 36px;border-top:1px solid {C['line_soft']};
+    background:{C['surface']};font-size:12.5px;color:{C['ink_65']};
+    display:flex;flex-wrap:wrap;gap:8px;align-items:center;}}
+  .orgs .lbl{{font-size:10px;font-weight:600;letter-spacing:1.4px;
+    text-transform:uppercase;color:{C['ink_45']};margin-right:4px;}}
+  /* Кнопка, а не подпись: по ней отбираются документы одного органа.
+     В печать уходит обычным текстом — фильтровать бумагу нельзя. */
+  .org-btn{{font:inherit;cursor:pointer;background:{C['white']};
+    border:1px solid {C['line']};border-radius:2px;padding:4px 10px;
+    color:{C['ink_65']};white-space:nowrap;}}
+  .org-btn:hover{{border-color:{C['accent']};}}
+  .org-btn b{{font-weight:600;}}
+  .org-btn .n{{color:{C['ink_45']};margin-left:5px;{B.FONT_NUMERIC}}}
+  .org-btn[aria-pressed="true"]{{background:{C['accent_soft']};
+    border-color:{C['accent']};color:{C['ink']};}}
+  .org-btn[aria-pressed="true"] .n{{color:{C['accent_ink']};}}
+  .card[hidden], .sec[hidden]{{display:none!important;}}
+  .nothing{{padding:24px 36px;font-size:14px;color:{C['ink_65']};
+    background:{C['white']};border:1px solid {C['line']};border-top:none;}}
 
   /* ---------- сроки ---------- */
   .dl{{margin:28px 0 0;background:{C['white']};border:1px solid {C['line']};
@@ -288,8 +306,12 @@ STYLE = f"""
   .card .code{{display:inline-block;font-size:10.5px;font-weight:700;
     color:{C['accent_ink']};margin-right:9px;{B.FONT_NUMERIC}}}
   .card .sum{{font-size:13.5px;line-height:1.6;color:{C['ink_65']};}}
-  .card .chips{{margin-top:13px;font-size:10.5px;color:{C['accent_ink']};}}
-  .card .chip{{margin-right:14px;white-space:nowrap;}}
+  /* Плашки склеены без пробелов, и браузеру негде перенести строку: ряд
+     тем в 493 пикселя раздувал карточку, а за ней и всю страницу до 541
+     при экране 375. Flex переносит сам, не полагаясь на пробелы в разметке. */
+  .card .chips{{margin-top:13px;font-size:10.5px;color:{C['accent_ink']};
+    display:flex;flex-wrap:wrap;gap:4px 14px;}}
+  .card .chip{{white-space:nowrap;}}
   .card .note{{margin-top:13px;padding:10px 14px;background:{C['accent_soft']};
     border-left:2px solid {C['accent']};font-size:12.5px;color:{C['ink']};font-weight:500;}}
   .card .src{{margin-top:14px;font-size:12.5px;font-weight:600;}}
@@ -300,6 +322,29 @@ STYLE = f"""
   .foot b{{color:{C['ink']};font-weight:600;}}
   .empty{{background:{C['white']};border:1px solid {C['line']};border-top:none;
     padding:38px;text-align:center;font-size:14.5px;color:{C['ink_65']};}}
+
+  /* ---------- узкий экран ---------- */
+  @media (max-width: 560px){{
+    .sheet{{padding:20px 14px 36px;}}
+    .head{{padding:24px 18px 20px;}}
+    .head h1{{font-size:24px;}}
+    .verdict{{padding:18px;font-size:15px;}}
+    /* Четыре колонки цифр на 375 пикселях ужимаются так, что подписи
+       переносятся по слогам. Две на две читаются. */
+    .figures{{flex-wrap:wrap;}}
+    .fig{{flex:0 0 50%;border-left:none;border-top:1px solid {C['line_soft']};}}
+    .fig:nth-child(odd){{border-right:1px solid {C['line_soft']};}}
+    .fig:nth-child(-n+2){{border-top:none;}}
+    .orgs{{padding:12px 18px;}}
+    .dl h2, .dl .row{{padding-left:18px;padding-right:18px;}}
+    /* Дата и заголовок в одну строку не помещаются: колонка в 104 пикселя
+       оставляет заголовку меньше половины ширины. */
+    .dl .row{{flex-direction:column;gap:4px;}}
+    .dl .when{{flex:none;}}
+    .dl .when span{{display:inline;margin-left:8px;}}
+    .card{{padding:16px 18px;}}
+    .card h3{{font-size:15px;}}
+  }}
 
   /* ---------- печать и PDF ---------- */
   @page{{size:A4;margin:14mm 12mm 16mm;}}
@@ -312,6 +357,8 @@ STYLE = f"""
     .card,.dl .row,.dl{{break-inside:avoid;page-break-inside:avoid;}}
     .sec{{break-after:avoid;page-break-after:avoid;}}
     .no-print{{display:none!important;}}
+    .org-btn{{border:none;background:none;padding:0;margin-right:14px;}}
+    .card[hidden], .sec[hidden]{{display:block!important;}}
     /* Адрес первоисточника на бумаге по ссылке не откроешь. */
     a.src::after{{content:" (" attr(href) ")";font-weight:400;font-size:9pt;
       color:{C['ink_45']};word-break:break-all;}}
@@ -333,7 +380,8 @@ def _card(entry, u: str) -> str:
     pub = parse_dt(r["published_at"])
     org_color = B.AUTHORITY.get(r["authority"], C["ink_65"])
 
-    P = [f'<div class="card" style="border-left-color:{color};">']
+    P = [f'<div class="card" data-org="{_esc(r["authority"])}" '
+         f'style="border-left-color:{color};">']
 
     top = [f'<span class="org" style="color:{org_color};">{_esc(r["authority"])}</span>']
     if pub:
@@ -408,10 +456,18 @@ def render_html(buckets, rows, health, period_label: str, dls) -> str:
         P.append("</div>")
         auth = _by_authority(buckets)
         if auth:
-            items = f'<span class="sep">|</span>'.join(
-                f'<b style="color:{B.AUTHORITY.get(k, C["ink"])};">{_esc(k)}</b>&nbsp;'
-                f'<span class="num">{v}</span>' for k, v in auth)
-            P.append(f'<div class="orgs">{items}</div>')
+            btns = [f'<button class="org-btn" type="button" data-filter="" '
+                    f'aria-pressed="true">Все<span class="n">{total}</span></button>']
+            for k, v in auth:
+                btns.append(
+                    f'<button class="org-btn" type="button" data-filter="{_esc(k)}" '
+                    f'aria-pressed="false">'
+                    f'<b style="color:{B.AUTHORITY.get(k, C["ink"])};">{_esc(k)}</b>'
+                    f'<span class="n">{v}</span></button>')
+            P.append('<div class="orgs"><span class="lbl">Орган</span>'
+                     + "".join(btns) + "</div>")
+            P.append('<div class="nothing" id="nothing" hidden>'
+                     'По выбранному органу документов в этом отчёте нет.</div>')
     P.append("</div>")
 
     # ---------- сроки: единственное с жёстким дедлайном ----------
@@ -437,7 +493,8 @@ def render_html(buckets, rows, health, period_label: str, dls) -> str:
         if not entries:
             continue
         m = U[u]
-        P.append(f'<div class="sec"><span class="t" style="color:{m["color"]};">'
+        P.append(f'<div class="sec" data-sec="{u}">'
+                 f'<span class="t" style="color:{m["color"]};">'
                  f'{_esc(m["label"])}</span>'
                  f'<span class="n num" style="color:{m["color"]};">'
                  f'{len(entries)}</span><span class="line"></span></div>')
@@ -457,6 +514,53 @@ def render_html(buckets, rows, health, period_label: str, dls) -> str:
              'профильные СМИ.<br>'
              'Отчёт сформирован автоматически; сведения приведены по данным '
              'первоисточников на момент сбора.</div>')
+    # Отбор по органу. Отчёт — обычный файл без сервера, поэтому всё
+    # происходит на странице: показываем и прячем уже готовые карточки.
+    # Заголовок раздела прячется вместе с последней его карточкой, иначе
+    # остаётся «ВАЖНОЕ 9» над пустотой.
+    P.append("""<script>
+(function () {
+  var btns = [].slice.call(document.querySelectorAll('.org-btn'));
+  if (!btns.length) return;
+  var cards = [].slice.call(document.querySelectorAll('.card[data-org]'));
+  var secs  = [].slice.call(document.querySelectorAll('.sec[data-sec]'));
+  var none  = document.getElementById('nothing');
+
+  function apply(org) {
+    var shown = 0;
+    cards.forEach(function (c) {
+      var ok = !org || c.getAttribute('data-org') === org;
+      c.hidden = !ok;
+      if (ok) shown++;
+    });
+    secs.forEach(function (s) {
+      var n = 0, el = s.nextElementSibling;
+      while (el && el.classList.contains('card')) {
+        if (!el.hidden) n++;
+        el = el.nextElementSibling;
+      }
+      s.hidden = n === 0;
+      var cnt = s.querySelector('.n');
+      if (cnt) cnt.textContent = n;
+    });
+    if (none) none.hidden = shown !== 0;
+    btns.forEach(function (b) {
+      b.setAttribute('aria-pressed',
+        String((b.getAttribute('data-filter') || '') === (org || '')));
+    });
+  }
+
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var org = b.getAttribute('data-filter') || '';
+      // Повторное нажатие по уже выбранному возвращает всё: иначе выйти
+      // из отбора можно только кнопкой «Все», а её ищут не сразу.
+      if (b.getAttribute('aria-pressed') === 'true' && org) org = '';
+      apply(org);
+    });
+  });
+})();
+</script>""")
     P.append("</div></body></html>")
     return "\n".join(P)
 

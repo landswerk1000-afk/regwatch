@@ -261,6 +261,20 @@ def payload_for(buckets: dict, period_label: str, alert_mode: bool,
 
 # ---------- выгрузка отчётов в веб-приложение ----------
 
+def _human_stamp(stem: str) -> str:
+    """«2026-09-27_0946» → «27 сентября, 09:46».
+
+    Машинная дата в списке отчётов читается хуже обычной, а два отчёта
+    за один день без времени вообще не различить.
+    """
+    from ..report import MONTHS
+    try:
+        date_part, time_part = stem.split("_")[0], stem.split("_")[1]
+        y, m, d = (int(x) for x in date_part.split("-"))
+        return f"{d} {MONTHS[m - 1]}, {time_part[:2]}:{time_part[2:4]}"
+    except Exception:
+        return stem
+
 def export_reports(root: Path, reports_dir: Path, limit: int = 12) -> int:
     """Копирует свежие HTML-отчёты в webapp/ и пишет latest.json для страницы.
 
@@ -297,23 +311,42 @@ def export_reports(root: Path, reports_dir: Path, limit: int = 12) -> int:
     if legacy.is_dir():
         shutil.rmtree(legacy, ignore_errors=True)
 
+    # Подписи прошлых отчётов берём из прежнего указателя: рядом с ними
+    # на сервере нет markdown-файла — он создаётся заново каждый прогон
+    # и в репозиторий не уезжает. Без этого вчерашние отчёты теряли подпись.
+    known = {}
+    old_index = webapp / "latest.json"
+    if old_index.exists():
+        try:
+            for r in json.loads(old_index.read_text(encoding="utf-8")).get("reports", []):
+                if r.get("file"):
+                    known[r["file"]] = r
+        except Exception:
+            pass
+
     index = []
     for f in files:
         if f.resolve() != (webapp / f.name).resolve():
             shutil.copy2(f, webapp / f.name)
+
         md = f.with_suffix(".md")
-        summary = ""
+        summary = None
         if md.exists():
-            for line in md.read_text(encoding="utf-8").splitlines():
-                if line.startswith("| ") and "---" not in line:
-                    continue
+            text = md.read_text(encoding="utf-8")
+            for line in text.splitlines():
                 if line.startswith("По органам:"):
                     summary = line.replace("По органам:", "").strip()
                     break
+            if summary is None:
+                # Пустой отчёт — это тоже сведение, и «подписи нет» читается
+                # как поломка. Говорим прямо.
+                summary = "значимых изменений нет"
+        if summary is None:
+            summary = (known.get(f.name) or {}).get("summary", "")
+
         kind = "Срочное уведомление" if "_alert" in f.name else "Ежедневный отчёт"
-        stamp = f.stem.split("_")[0]
         index.append({"file": f.name,
-                      "title": f"{kind} — {stamp}",
+                      "title": f"{kind} — {_human_stamp(f.stem)}",
                       "summary": summary})
 
     (webapp / "latest.json").write_text(
