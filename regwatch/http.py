@@ -115,13 +115,21 @@ class Http:
     def __init__(self, proxy_url: str | None = None, proxy_hosts=None,
                  timeout: int = 30, retries: int = 3, verify_tls: bool = True,
                  min_interval: float = 0.7, logger=None,
-                 relay_url: str | None = None, relay_token: str | None = None):
+                 relay_url: str | None = None, relay_token: str | None = None,
+                 fallback_proxies=None):
         self.proxy_url = (proxy_url or "").strip() or None
         # Ретранслятор — функция в Yandex Cloud, скачивающая страницу
         # с российского IP. Предпочтительнее публичного прокси: живёт
         # месяцами, а не днями, и трафик не идёт через чужую машину.
         self.relay_url = (relay_url or "").strip() or None
         self.relay_token = (relay_token or "").strip() or None
+        # Резервные пути на случай смерти ретранслятора. Проверять их заранее
+        # бессмысленно: бесплатные прокси умирают в любой момент. Пробуем
+        # тогда, когда понадобились, и запоминаем сработавший до конца прогона.
+        self.fallback_proxies = [str(x).strip() for x in (fallback_proxies or []) if str(x).strip()]
+        self.relay_down_reason: str | None = None
+        self._fallback_opener = None
+        self._fallback_url: str | None = None
         if self.relay_token:
             # Заголовки HTTP передаются в latin-1. Токен с кириллицей роняет
             # запрос сообщением про кодек, из которого причина не видна.
@@ -176,7 +184,44 @@ class Http:
         return any(host == h or host.endswith("." + h) for h in self.proxy_hosts)
 
     def uses_relay(self, url: str) -> bool:
+        if self.relay_down_reason:
+            return False
         return bool(self.relay_url and self.relay_token) and self._host_listed(url)
+
+    def _make_fallback(self, proxy_url: str):
+        """Открыватель для запасного прокси."""
+        if socks.is_socks(proxy_url):
+            return socks.build_opener(proxy_url, ssl_context=self._ctx)
+        return urllib.request.build_opener(
+            urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}),
+            urllib.request.HTTPSHandler(context=self._ctx),
+            _Redirects())
+
+    def _fallback_for(self, url: str):
+        """Находит рабочий запасной путь. Первый удачный служит до конца прогона."""
+        if self._fallback_opener is not None:
+            return self._fallback_opener
+        candidates = ([self.proxy_url] if self.proxy_url else []) + self.fallback_proxies
+        seen = set()
+        for cand in candidates:
+            if not cand or cand in seen:
+                continue
+            seen.add(cand)
+            try:
+                opener = self._make_fallback(cand)
+                # Проверяем делом на том самом адресе, ради которого всё:
+                # прокси, отвечающий вообще, но не пускающий к госсайту,
+                # бесполезен.
+                req = urllib.request.Request(url, headers=dict(DEFAULT_HEADERS), method="GET")
+                with opener.open(req, timeout=min(self.timeout, 30)) as resp:
+                    resp.read(1024)
+                self._fallback_opener, self._fallback_url = opener, cand
+                if self.log:
+                    self.log.warning("перешёл на запасной путь: %s", cand)
+                return opener
+            except Exception:
+                continue
+        return None
 
     def uses_proxy(self, url: str) -> bool:
         if not self._via_proxy:
@@ -191,6 +236,8 @@ class Http:
         """Каким путём пойдёт запрос — для диагностики."""
         if self.uses_relay(url):
             return "ретранслятор"
+        if self.relay_down_reason and self._fallback_url and self._host_listed(url):
+            return f"запасной прокси ({self._fallback_url})"
         if self.uses_proxy(url):
             return f"прокси ({self.proxy_kind})"
         return "напрямую"
@@ -203,6 +250,46 @@ class Http:
             if wait > 0:
                 time.sleep(wait)
         self._last_hit[host] = time.monotonic()
+
+    def _relay_failed(self, reason: str) -> None:
+        """Отмечает ретранслятор нерабочим до конца прогона.
+
+        Один раз, а не при каждом запросе: пробовать мёртвый путь для каждого
+        из десятка источников — минуты впустую на каждом прогоне.
+        """
+        if self.relay_down_reason:
+            return
+        self.relay_down_reason = reason
+        if self.log:
+            self.log.warning("ретранслятор недоступен (%s) — перехожу на резерв", reason)
+
+    def _retry_without_relay(self, url, headers, timeout, retries, allow_status):
+        """Повторяет запрос в обход ретранслятора."""
+        opener = self._fallback_for(url)
+        if opener is None:
+            raise FetchError(url, f"ретранслятор недоступен ({self.relay_down_reason}), "
+                                  f"запасной путь не найден")
+        hdrs = dict(DEFAULT_HEADERS)
+        if headers:
+            hdrs.update(headers)
+        started = time.monotonic()
+        try:
+            req = urllib.request.Request(url, headers=hdrs, method="GET")
+            with opener.open(req, timeout=timeout or self.timeout) as resp:
+                raw = resp.read()
+                body = _decompress(raw, resp.headers.get("Content-Encoding", ""))
+                r = Response(resp.geturl(), resp.status, body,
+                             dict(resp.headers), time.monotonic() - started)
+                if allow_status and r.status not in allow_status:
+                    raise FetchError(url, f"HTTP {r.status}", r.status)
+                self._ok_count += 1
+                return r
+        except FetchError:
+            self._fail_count += 1
+            raise
+        except Exception as e:
+            self._fail_count += 1
+            raise FetchError(url, f"запасной путь не справился: {type(e).__name__}: {e}")
 
     def get(self, url: str, headers=None, timeout=None, retries=None,
             allow_status=(200,)) -> Response:
@@ -218,6 +305,14 @@ class Http:
         # осел бы в журналах Яндекса и в истории обращений.
         request_url = url
         via_relay = self.uses_relay(url)
+        # Ретранслятор уже признан мёртвым в этом прогоне, а адрес — из тех,
+        # что без него недоступны. Идти напрямую бессмысленно: госсайт
+        # оборвёт рукопожатие TLS и запрос повиснет до таймаута. Сразу берём
+        # запасной путь.
+        if not via_relay and self.relay_down_reason and self._host_listed(url):
+            spare = self._fallback_for(url)
+            if spare is not None:
+                opener = spare
         if via_relay:
             request_url = (self.relay_url.rstrip("/") + "?url="
                            + urllib.parse.quote(url, safe=""))
@@ -248,10 +343,24 @@ class Http:
                     return r
             except urllib.error.HTTPError as e:
                 last_err = FetchError(url, f"HTTP {e.code}", e.code)
+                # Через ретранслятор приходит ЧУЖОЙ код ответа: 404 от СОЗД
+                # и 404 «функции нет» выглядят одинаково. Различаем по
+                # заголовку: успешно ретранслированный ответ его несёт,
+                # собственная ошибка функции — нет.
+                if via_relay and not e.headers.get("X-Relay-Final-Url"):
+                    self._relay_failed(f"функция ответила HTTP {e.code}")
+                    return self._retry_without_relay(url, headers, timeout,
+                                                     retries, allow_status)
                 if e.code in (400, 401, 403, 404, 410):
                     break
             except (urllib.error.URLError, socket.timeout, ssl.SSLError,
                     ConnectionError, TimeoutError) as e:
+                # До функции не достучались вовсе — её удалили, облако лежит
+                # или пропала сеть. Госсайт тут ни при чём.
+                if via_relay and attempt >= retries:
+                    self._relay_failed(f"{type(e).__name__}: {getattr(e, 'reason', e)}")
+                    return self._retry_without_relay(url, headers, timeout,
+                                                     retries, allow_status)
                 reason = getattr(e, "reason", e)
                 last_err = FetchError(url, f"{type(e).__name__}: {reason}")
             except Exception as e:

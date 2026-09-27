@@ -103,7 +103,8 @@ class Agent:
         """
         threshold = int(self.cfg.thresholds.get("source_fail_alert", 2))
         ch = self.store.health_changes(threshold)
-        if not ch["broke"] and not ch["fixed"]:
+        relay_down = getattr(self.http, "relay_down_reason", None)
+        if not ch["broke"] and not ch["fixed"] and not relay_down:
             return None
 
         # Текст ошибки приходит из исключения и может содержать < > &.
@@ -120,8 +121,25 @@ class Agent:
             lines.append(f"<b>{_e(squeeze(h['source'], 40))}</b> — снова отвечает")
 
         head = "Регмонитор: состояние источников"
-        text = f"<b>{head}</b>\n\n" + "\n\n".join(lines)
-        if ch["broke"]:
+        # Список источников может быть пуст — когда сломался только
+        # ретранслятор. Склейка пустого списка оставила бы в сообщении
+        # три пустые строки подряд.
+        parts = [f"<b>{head}</b>"]
+        if lines:
+            parts.append("\n\n".join(lines))
+        text = "\n\n".join(parts)
+        if relay_down:
+            from html import escape as _e2
+            used = getattr(self.http, "_fallback_url", None)
+            text += ("\n\n<b>Ретранслятор в Yandex Cloud недоступен</b>\n"
+                     f"<i>{_e2(squeeze(relay_down, 120))}</i>\n")
+            text += (f"Перешёл на запасной прокси: <code>{_e2(used)}</code>"
+                     if used else
+                     "Запасного пути не нашлось — Дума, Совет Федерации "
+                     "и Минфин недоступны.\nОбновить список: "
+                     "<code>python3 -m regwatch proxies</code>")
+
+        if ch["broke"] or relay_down:
             text += ("\n\nОстальные источники продолжают работать. "
                      "Подробности: <code>python3 -m regwatch doctor</code>")
 

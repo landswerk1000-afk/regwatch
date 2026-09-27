@@ -150,3 +150,21 @@ def load(root: Path, max_age_hours: int = 6) -> str | None:
         return items[0]["url"] if items else None
     except Exception:
         return None
+
+def all_cached(root: Path) -> list[str]:
+    """Все прокси из кэша, невзирая на возраст.
+
+    load() отбрасывает записи старше шести часов — для ВЫБОРА основного пути
+    это правильно. Но когда падает ретранслятор, выбирать не из чего:
+    протухший и, возможно, живой прокси лучше, чем ничего. Проверять их
+    заранее бессмысленно — бесплатные прокси умирают в любой момент,
+    поэтому пробуем по очереди в тот момент, когда понадобились.
+    """
+    p = cache_path(root)
+    if not p.exists():
+        return []
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+        return [x["url"] for x in (data.get("proxies") or []) if x.get("url")]
+    except Exception:
+        return []

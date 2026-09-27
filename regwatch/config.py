@@ -136,6 +136,20 @@ class Config:
         return os.environ.get("REGWATCH_RELAY_TOKEN", "").strip()
 
     @property
+    def fallback_proxies(self) -> list:
+        """Запасные пути на случай смерти ретранслятора.
+
+        Возраст записей не проверяем: это аварийный резерв, а не основной
+        выбор. Протухший и, возможно, живой прокси лучше, чем недоступные
+        Дума, Совет Федерации и Минфин.
+        """
+        try:
+            from . import proxypool
+            return proxypool.all_cached(self.root)
+        except Exception:
+            return []
+
+    @property
     def proxy_hosts(self) -> list:
         return self.data["proxy"].get("hosts", [])
 
@@ -149,4 +163,5 @@ class Config:
         return Http(proxy_url=self.proxy_url or None, proxy_hosts=self.proxy_hosts,
                     timeout=h["timeout"], retries=h["retries"],
                     min_interval=h["min_interval"], logger=logger,
-                    relay_url=self.relay_url or None, relay_token=self.relay_token or None)
+                    relay_url=self.relay_url or None, relay_token=self.relay_token or None,
+                    fallback_proxies=self.fallback_proxies)

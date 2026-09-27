@@ -765,6 +765,118 @@ _tg.send_message, _tg.configured = _real_send, _real_conf
 _a3.close(); _sh3.rmtree(_box3)
 
 
+# ------------------------- запасной путь при падении ретранслятора
+section("15. Смерть ретранслятора не оставляет без источников")
+import http.server as _hs2, socketserver as _ss2
+from regwatch.http import Http as _H2, FetchError as _FE2
+
+_MODE = {"relay": "ok"}
+_HITS = {"relay": 0, "spare": 0}
+
+
+class _RelayStub2(_hs2.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        _HITS["relay"] += 1
+        m = _MODE["relay"]
+        if m == "gone":            # функцию удалили: своя ошибка, без заголовка
+            self.send_response(404); self.end_headers(); self.wfile.write(b"no"); return
+        if m == "relayed404":      # госсайт ответил 404, ретранслятор жив
+            self.send_response(404)
+            self.send_header("X-Relay-Final-Url", "https://sozd.duma.gov.ru/x")
+            self.end_headers(); self.wfile.write(b"gone"); return
+        b = "<h1>через ретранслятор</h1>".encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("X-Relay-Final-Url", "https://sozd.duma.gov.ru/oz")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers(); self.wfile.write(b)
+
+
+class _SpareStub2(_hs2.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        _HITS["spare"] += 1
+        b = "<h1>через запасной путь</h1>".encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers(); self.wfile.write(b)
+
+
+_rs2 = _ss2.TCPServer(("127.0.0.1", 0), _RelayStub2)
+_sp2 = _ss2.TCPServer(("127.0.0.1", 0), _SpareStub2)
+threading.Thread(target=_rs2.serve_forever, daemon=True).start()
+threading.Thread(target=_sp2.serve_forever, daemon=True).start()
+time.sleep(0.3)
+_RELAY2 = f"http://127.0.0.1:{_rs2.server_address[1]}/"
+_SPARE2 = f"http://127.0.0.1:{_sp2.server_address[1]}/"
+
+
+class _SpareOpener2:
+    def open(self, req, timeout=None):
+        import urllib.request as _u
+        return _u.urlopen(_SPARE2, timeout=timeout)
+
+
+def _mk2(with_spare=True):
+    h = _H2(relay_url=_RELAY2, relay_token="tok",
+            proxy_hosts=["sozd.duma.gov.ru"], retries=1, timeout=5)
+    h.fallback_proxies = ["socks5h://127.0.0.1:1"] if with_spare else []
+    h._make_fallback = lambda u: _SpareOpener2()
+    return h
+
+
+_U2 = "https://sozd.duma.gov.ru/oz"
+
+_MODE["relay"] = "ok"; _HITS.update(relay=0, spare=0)
+_h2 = _mk2()
+check("исправный ретранслятор используется",
+      "через ретранслятор" in _h2.get(_U2).text and _HITS["spare"] == 0)
+
+# Через ретранслятор приходит ЧУЖОЙ код ответа: 404 от СОЗД и 404 «функции
+# нет» выглядят одинаково. Путать их нельзя — иначе агент уйдёт на резерв
+# из-за одной несуществующей страницы.
+_MODE["relay"] = "relayed404"; _HITS.update(relay=0, spare=0)
+_h2 = _mk2()
+try:
+    _h2.get(_U2)
+except _FE2:
+    pass
+check("чужой 404 не считается поломкой", _h2.relay_down_reason is None)
+check("на запасной путь при этом не уходим", _HITS["spare"] == 0)
+
+_MODE["relay"] = "gone"; _HITS.update(relay=0, spare=0)
+_h2 = _mk2()
+_r2 = _h2.get(_U2)
+check("своя ошибка функции — это поломка", _h2.relay_down_reason is not None)
+check("ответ получен запасным путём", "запасной путь" in _r2.text)
+
+# После падения идти напрямую нельзя: госсайт оборвёт TLS и запрос повиснет
+# до таймаута. Проверяем, что следующий запрос тоже идёт в обход.
+_HITS.update(relay=0, spare=0)
+_h2.get(_U2)
+check("мёртвый путь больше не пробуется", _HITS["relay"] == 0)
+check("следующий запрос тоже идёт запасным", _HITS["spare"] == 1)
+
+_MODE["relay"] = "gone"
+_h2 = _mk2(with_spare=False)
+try:
+    _h2.get(_U2)
+    check("без запаса — внятная ошибка", False, "ошибки не было")
+except _FE2 as _e2:
+    check("без запаса — внятная ошибка", "запасной путь не найден" in str(_e2))
+
+_h2 = _mk2()
+check("ЦБ не затронут", _h2.route("https://cbr.ru/x") == "напрямую")
+check("почта не затронута", _h2.route("https://smtp.gmail.com/") == "напрямую")
+_rs2.shutdown(); _sp2.shutdown()
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""
