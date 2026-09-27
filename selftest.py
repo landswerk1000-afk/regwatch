@@ -877,6 +877,49 @@ check("почта не затронута", _h2.route("https://smtp.gmail.com/")
 _rs2.shutdown(); _sp2.shutdown()
 
 
+# --------------------- срок замечаний не должен молчать в спокойный день
+section("16. Срок замечаний не теряется при пустом отчёте")
+from datetime import timedelta as _td16
+from regwatch.deliver import webpush as _wp16, telegram as _tg16
+from regwatch.util import now_msk as _now16
+
+
+class _FakeRow16(dict):
+    def __getitem__(self, k):
+        return self.get(k)
+
+
+def _dl16(days):
+    row = _FakeRow16(title="Проект указания Банка России", url="https://cbr.ru/x")
+    return [(_now16() + _td16(days=days), row, {})]
+
+
+# 27 сентября уведомление сказало «значимых изменений нет», хотя через два
+# дня истекал срок подачи замечаний по проекту указания ЦБ. Срок был в отчёте
+# на сайте — но открывать отчёт после такой фразы у человека нет причины.
+# Для юридического инструмента это худший класс пропуска: молчание ровно
+# о том единственном, у чего есть жёсткий дедлайн.
+_p16 = _wp16.payload_for({}, "Отчёт", False, "https://x/", _dl16(2))
+check("push упоминает срок при пустом отчёте", "срок" in _p16["body"].lower(), _p16["body"])
+check("срок через 2 дня — важность обычная", _p16["level"] == "normal")
+
+_p16b = _wp16.payload_for({}, "Отчёт", False, "https://x/", _dl16(1))
+check("срок завтра поднимает важность", _p16b["level"] == "critical", _p16b["level"])
+_p16c = _wp16.payload_for({}, "Отчёт", False, "https://x/", _dl16(0))
+check("срок сегодня поднимает важность", _p16c["level"] == "critical")
+
+_p16d = _wp16.payload_for({}, "Отчёт", False, "https://x/", [])
+check("без сроков текст прежний", _p16d["body"] == "Значимых изменений нет")
+_p16e = _wp16.payload_for({}, "Отчёт", False, "https://x/", _dl16(-3))
+check("истёкший срок не упоминается", "срок" not in _p16e["body"].lower())
+
+_t16 = _tg16.render({}, "Отчёт", _dl16(2))
+check("telegram показывает сроки при нуле документов", "Ближайшие сроки" in _t16)
+check("telegram говорит, сколько осталось", "через 2 дн." in _t16)
+_t16b = _tg16.render({}, "Отчёт", [])
+check("без сроков telegram прежний", "Ближайшие сроки" not in _t16b)
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""

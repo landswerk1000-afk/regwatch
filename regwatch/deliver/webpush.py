@@ -190,11 +190,34 @@ def send(root: Path, store, payload: dict) -> dict:
 
 # ---------- формирование уведомления ----------
 
+def _closest_deadline(deadlines) -> str | None:
+    """Короткая фраза о ближайшем сроке замечаний — для тела уведомления."""
+    if not deadlines:
+        return None
+    from ..util import now_msk
+    today = now_msk().date()
+    dt = deadlines[0][0]
+    days = (dt.date() - today).days
+    if days < 0:
+        return None
+    n = len(deadlines)
+    when = ("Срок замечаний сегодня" if days == 0
+            else "Срок замечаний завтра" if days == 1
+            else f"Ближайший срок замечаний — через {days} дн.")
+    return when if n == 1 else f"{when} (всего сроков: {n})"
+
 def payload_for(buckets: dict, period_label: str, alert_mode: bool,
-                base_url: str = "") -> dict:
-    """Собирает короткое уведомление из тех же данных, что и остальные каналы."""
+                base_url: str = "", deadlines=None) -> dict:
+    """Собирает короткое уведомление из тех же данных, что и остальные каналы.
+
+    Сроки подачи замечаний упоминаются даже в спокойный день: это
+    единственное в отчёте с жёстким дедлайном. 27 сентября уведомление
+    сказало «значимых изменений нет», хотя через два дня истекал срок
+    по проекту указания ЦБ, — а открывать отчёт после такой фразы
+    у человека нет причины.
+    """
     from ..report import URGENCY_META, ORDER
-    from ..util import squeeze
+    from ..util import now_msk, squeeze
 
     counts = {u: len(buckets.get(u) or []) for u in ORDER}
     total = sum(counts.values())
@@ -211,8 +234,11 @@ def payload_for(buckets: dict, period_label: str, alert_mode: bool,
         level = "critical"
     else:
         title = f"Регмонитор · {period_label}"
+        soon = _closest_deadline(deadlines)
         if not total:
             body = "Значимых изменений нет"
+            if soon:
+                body += f". {soon}"
         else:
             parts = []
             if critical:
@@ -221,8 +247,13 @@ def payload_for(buckets: dict, period_label: str, alert_mode: bool,
                 parts.append(f"{counts['high']} важных")
             parts.append(f"всего {total}")
             body = ", ".join(parts)
+            if soon:
+                body += f". {soon}"
         url = base_url or "./"
-        level = "critical" if critical else "normal"
+        # Срок, истекающий сегодня или завтра, поднимает важность: такое
+        # уведомление не должно теряться среди обычных.
+        urgent_deadline = bool(soon and ("сегодня" in soon or "завтра" in soon))
+        level = "critical" if (critical or urgent_deadline) else "normal"
 
     return {"title": squeeze(title, MAX_TITLE), "body": squeeze(body, MAX_BODY),
             "url": url, "level": level, "tag": "alert" if alert_mode else "daily"}

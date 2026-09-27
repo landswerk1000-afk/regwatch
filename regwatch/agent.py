@@ -284,7 +284,8 @@ class Agent:
             else:
                 try:
                     res = webpush.send(self.cfg.root, self.store, webpush.payload_for(
-                        buckets, label, alert_mode, self.cfg.data.get("webapp_url", "")))
+                        buckets, label, alert_mode,
+                        self.cfg.data.get("webapp_url", ""), dls))
                     channels.append(f"push: {res['detail']}")
                     self.store.log_delivery(kind, "push", "ok" if res["sent"] else "no_recipients",
                                             res["detail"], total, str(path))

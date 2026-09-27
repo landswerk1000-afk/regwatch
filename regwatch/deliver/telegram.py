@@ -159,6 +159,20 @@ def send_document(path: Path, caption: str = "") -> dict:
     return d
 
 
+def _deadline_block(deadlines) -> str:
+    """Ближайшие сроки подачи замечаний — с указанием, сколько осталось."""
+    from ..util import now_msk, squeeze
+    out = ["\n⏳ <b>Ближайшие сроки замечаний</b>"]
+    today = now_msk().date()
+    for dt, r, meta in deadlines[:6]:
+        days = (dt.date() - today).days
+        when = ("сегодня" if days == 0 else "завтра" if days == 1
+                else f"через {days} дн." if days > 1 else "срок истёк")
+        title = _esc(squeeze(r["title"], 110))
+        link = f'<a href="{_esc(r["url"])}">{title}</a>' if r["url"] else title
+        out.append(f"• <b>{dt:%d.%m}</b> ({when}) — {link}")
+    return "\n".join(out)
+
 def render(buckets: dict, period_label: str, deadlines=None) -> str:
     """Компактный дайджест под Telegram: заголовок, блоки по срочности, сроки."""
     from ..report import ORDER, URGENCY_META, _row_meta
@@ -169,6 +183,12 @@ def render(buckets: dict, period_label: str, deadlines=None) -> str:
     total = sum(len(v) for v in buckets.values())
     if not total:
         lines.append("\nЗа период значимых изменений нет.")
+        # Но срок подачи замечаний — единственное в отчёте с жёстким
+        # дедлайном, и молчать о нём нельзя даже в спокойный день.
+        # 27 сентября уведомление сказало «изменений нет», хотя через два
+        # дня истекал срок по проекту указания ЦБ.
+        if deadlines:
+            lines.append(_deadline_block(deadlines))
         return "\n".join(lines)
 
     for u in ORDER:
@@ -193,9 +213,7 @@ def render(buckets: dict, period_label: str, deadlines=None) -> str:
             lines.append(f"\n  <i>…и ещё {len(entries) - 12} — в приложенном отчёте</i>")
 
     if deadlines:
-        lines.append("\n⏳ <b>Ближайшие сроки замечаний</b>")
-        for dt, r, meta in deadlines[:6]:
-            lines.append(f"• {dt:%d.%m} — {_esc(squeeze(r['title'], 110))}")
+        lines.append(_deadline_block(deadlines))
     return "\n".join(lines)
 
 
@@ -204,7 +222,9 @@ def deliver(buckets: dict, period_label: str, report_path: Path,
     text = render(buckets, period_label, deadlines)
     send_message(text)
     note = "сообщение отправлено"
-    if attach and sum(len(v) for v in buckets.values()):
+    # Прикладываем и при нуле документов, если есть сроки: в отчёте
+    # они расписаны подробнее, чем помещается в сообщение.
+    if attach and (sum(len(v) for v in buckets.values()) or deadlines):
         # PDF предпочтительнее: открывается одинаково везде и пересылается
         # дальше без вопросов. HTML — запасной вариант, если PDF не собрался.
         for suffix, label in ((".pdf", "Полный отчёт"), (".html", "Полный отчёт")):
