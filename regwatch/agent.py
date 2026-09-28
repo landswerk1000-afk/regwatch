@@ -216,17 +216,27 @@ class Agent:
         единственный способ открыть отчёт с телефона, указатель — удобство
         поверх. Если не собрался указатель, отчёты выложить всё равно надо.
         """
+        reports = 0
         try:
-            webpush.export_reports(self.cfg.root, self.cfg.reports_dir)
+            reports = webpush.export_reports(self.cfg.root, self.cfg.reports_dir)
         except Exception as e:
             log.warning("выгрузка отчётов в webapp не удалась: %s: %s",
                         type(e).__name__, e)
+        docs = 0
         try:
-            n = webpush.export_documents(self.cfg.root, self.store)
-            log.info("указатель документов: %d документов", n)
+            docs = webpush.export_documents(
+                self.cfg.root, self.store,
+                skip_authorities=self.cfg.document_index.get("skip_authorities", []))
+            log.info("указатель документов: %d документов", docs)
         except Exception as e:
             log.warning("указатель документов не собран: %s: %s",
                         type(e).__name__, e)
+        # Отметка о выходе на связь пишется последней и всегда: по ней
+        # приложение отличает спокойный день от молчащего агента.
+        try:
+            webpush.export_status(self.cfg.root, documents=docs, reports=reports)
+        except Exception as e:
+            log.warning("отметка о сборе не записана: %s: %s", type(e).__name__, e)
 
     def run(self, alert_mode: bool = False, dry_run: bool = False,
             skip_collect: bool = False, mark: bool = True) -> dict:

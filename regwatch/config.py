@@ -24,6 +24,10 @@ DEFAULTS = {
         "_hint": "url вида http://user:pass@host:port или socks5h://127.0.0.1:1080; пустое значение = прокси выключен",
     },
     "sources": {},
+    "document_index": {
+        "skip_authorities": ["СМИ", "Правительство"],
+        "_hint": "Кого не показывать в указателе документов. Отчёт это не трогает.",
+    },
     "email": {
         "enabled": False,
         "smtp_host": "",
@@ -99,6 +103,10 @@ class Config:
     @property
     def sources(self) -> dict:
         return self.data.get("sources", {})
+
+    @property
+    def document_index(self) -> dict:
+        return self.data.get("document_index", {})
 
     @property
     def thresholds(self) -> dict:

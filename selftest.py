@@ -924,6 +924,36 @@ check("без сроков текст прежний", _p16d["body"] == "Зна�
 _p16e = _wp16.payload_for({}, "Отчёт", False, "https://x/", _dl16(-3))
 check("истёкший срок не упоминается", "срок" not in _p16e["body"].lower())
 
+# «2 требует решения, всего 5» не отвечает на вопрос, ради которого
+# уведомление и присылают: случилось ли что-то по моей теме. Открывать
+# приложение, чтобы это узнать, — лишний шаг там, где его можно не делать.
+def _entry16(title, authority="ЦБ", stage=None):
+    return {"row": _FakeRow16(title=title, authority=authority, stage=stage, url=None),
+            "events": ["new"]}
+
+
+_p16f = _wp16.payload_for(
+    {"high": [_entry16("Проект указания Банка России «О квалифицированных инвесторах»",
+                       stage="публичное обсуждение")]},
+    "Отчёт", False, "https://x/", [])
+check("в уведомлении виден документ, а не счётчик",
+      _p16f["title"].startswith("Проект указания"), _p16f["title"])
+check("орган и стадия — в подписи",
+      "ЦБ" in _p16f["body"] and "публичное обсуждение" in _p16f["body"], _p16f["body"])
+
+_p16g = _wp16.payload_for(
+    {"critical": [_entry16("Проект закона о ЦФА", "ГД", "первое чтение")],
+     "normal": [_entry16("a"), _entry16("b")]},
+    "Отчёт", False, "https://x/", [])
+check("главным берётся самый важный", _p16g["title"] == "Проект закона о ЦФА",
+      _p16g["title"])
+check("остальные посчитаны", "ещё 2 документа" in _p16g["body"], _p16g["body"])
+check("уведомление ведёт в приложение, а не на сайт ведомства",
+      _p16g["url"] == "https://x/")
+check("пустой выпуск остаётся прежним",
+      _wp16.payload_for({}, "Отчёт", False, "https://x/", [])["title"]
+      .startswith("Регмонитор"))
+
 _t16 = _tg16.render({}, "Отчёт", _dl16(2))
 check("telegram показывает сроки при нуле документов", "Ближайшие сроки" in _t16)
 check("telegram говорит, сколько осталось", "через 2 дн." in _t16)
@@ -1381,8 +1411,15 @@ _doc24("c", "Проект положения об обязательных но�
        meta=_js24.dumps({"comments_until": _ru24(_soon24)}))
 _doc24("d", "Проект указания позапрошлогодний", 0.0, days_ago=200,
        meta=_js24.dumps({"comments_until": _ru24(_gone24)}))
+# Указатель отвечает на вопрос «что регулируется», поэтому в нём только те,
+# кто регулирует. Пересказ в деловой ленте туда не попадает ни при какой
+# оценке — и даже если у него откуда-то взялся срок замечаний.
+_doc24("e", "Газета пишет про ЦФА", 0.9, authority="СМИ", days_ago=1)
+_doc24("f", "Постановление опубликовано", 0.9, authority="Правительство", days_ago=1,
+       meta=_js24.dumps({"comments_until": _ru24(_soon24)}))
 
-_n24 = _wp24.export_documents(_root24, _st24, floor=0.45)
+_n24 = _wp24.export_documents(_root24, _st24, floor=0.45,
+                              skip_authorities=["СМИ", "Правительство"])
 _out24 = _js24.loads((_root24 / "webapp" / "documents.json").read_text(encoding="utf-8"))
 _ids24 = [d["id"] for d in _out24["documents"]]
 
@@ -1392,6 +1429,13 @@ check("шум отсеян", "b" not in _ids24, f"в списке {_ids24}")
 check("открытый срок замечаний важнее оценки темы", "c" in _ids24,
       "документ с открытым обсуждением выпал — ради него указатель и нужен")
 check("давно закрытое обсуждение не тянем", "d" not in _ids24)
+check("отсечённый орган не проходит по оценке", "e" not in _ids24,
+      f"в списке {_ids24}")
+check("отсечённый орган не проходит и по сроку замечаний", "f" not in _ids24,
+      "исключение обошли через блок сроков")
+check("отбор берётся из настроек, а не вшит",
+      "skip_authorities" in (Path(__file__).resolve().parent / "config.json")
+      .read_text(encoding="utf-8"))
 check("число в заголовке совпадает со списком",
       _out24["total"] == len(_out24["documents"]) == _n24)
 
@@ -1407,6 +1451,30 @@ check("поля на месте",
       set(_c24) >= {"id", "title", "org", "url", "stage", "code", "date",
                     "sort", "topics", "deadline", "deadline_iso", "changed"},
       f"не хватает {{'id','title','org','url','stage','code','date','sort','topics','deadline','deadline_iso','changed'}} - {set(_c24)}")
+# Файл уезжает в репозиторий, а прогонов восемь в сутки. Если переписывать
+# его всегда, в историю каждые три часа ложится 44 КБ ради одной отметки.
+_was24 = (_root24 / "webapp" / "documents.json").stat().st_mtime_ns
+_wp24.export_documents(_root24, _st24, floor=0.45,
+                       skip_authorities=["СМИ", "Правительство"])
+check("без изменений файл не переписывается",
+      (_root24 / "webapp" / "documents.json").stat().st_mtime_ns == _was24)
+_doc24("g", "Новый проект указания о ЦФА", 0.8, days_ago=0)
+_wp24.export_documents(_root24, _st24, floor=0.45,
+                       skip_authorities=["СМИ", "Правительство"])
+check("с изменением — переписывается",
+      (_root24 / "webapp" / "documents.json").stat().st_mtime_ns != _was24)
+
+# Сломавшийся агент выглядит как спокойный день: приложение показывает
+# вчерашний отчёт, и отличить одно от другого нечем.
+_wp24.export_status(_root24, documents=7, reports=3)
+_st_json24 = _js24.loads((_root24 / "webapp" / "status.json").read_text(encoding="utf-8"))
+check("отметка о сборе записана", bool(_st_json24.get("checked")))
+check("отметка разбирается как дата",
+      _st_json24["checked"][:4].isdigit() and "T" in _st_json24["checked"],
+      _st_json24.get("checked", ""))
+check("отметка маленькая",
+      (_root24 / "webapp" / "status.json").stat().st_size < 200,
+      f'{(_root24 / "webapp" / "status.json").stat().st_size} байт')
 _sh24.rmtree(_root24, ignore_errors=True)
 
 # --- страница ---
@@ -1424,6 +1492,11 @@ check("с главной есть вход в указатель", "documents.ht
 # поехать следом. Один раз это уже забылось.
 check("офлайн-оболочка знает про общий лист", "'./app.css'" in _sw24)
 check("офлайн-оболочка знает про указатель", "'./documents.html'" in _sw24)
+check("офлайн-оболочка знает про отметку о сборе", "'./fresh.js'" in _sw24)
+for _n24 in ("index.html", "documents.html"):
+    _t24 = (_WEBAPP / _n24).read_text(encoding="utf-8")
+    check(f"{_n24} показывает отметку о сборе",
+          'id="fresh"' in _t24 and "fresh.js" in _t24)
 
 # Цвет объявляется в одном месте. Переменная, которой нет в общем листе, —
 # это не «чуть другой оттенок», это отсутствие цвета.

@@ -116,3 +116,11 @@
      табом можно, но непонятно, что выбрано. */
   a:focus-visible, button:focus-visible, input:focus-visible{
     outline:2px solid var(--accent);outline-offset:2px}
+
+  /* Отметка о последнем сборе. Показывается на обеих страницах одинаково:
+     вопрос «это сегодняшнее?» задают и списку отчётов, и указателю. */
+  .fresh{display:flex;align-items:center;gap:7px;margin:-10px 0 16px;
+         font-size:11px;color:var(--faint)}
+  .fresh .pip{width:6px;height:6px;border-radius:50%;background:var(--ok);flex:none}
+  .fresh.stale{color:var(--crit);font-weight:600}
+  .fresh.stale .pip{background:var(--crit)}

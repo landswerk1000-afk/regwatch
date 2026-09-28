@@ -206,6 +206,16 @@ def _closest_deadline(deadlines) -> str | None:
             else f"Ближайший срок замечаний — через {days} дн.")
     return when if n == 1 else f"{when} (всего сроков: {n})"
 
+def _top_row(buckets: dict):
+    """Самый важный документ выпуска. Порядок важностей — как в отчёте."""
+    from ..report import ORDER
+    for u in ORDER:
+        entries = buckets.get(u) or []
+        if entries:
+            return entries[0]["row"]
+    return None
+
+
 def payload_for(buckets: dict, period_label: str, alert_mode: bool,
                 base_url: str = "", deadlines=None) -> dict:
     """Собирает короткое уведомление из тех же данных, что и остальные каналы.
@@ -216,7 +226,7 @@ def payload_for(buckets: dict, period_label: str, alert_mode: bool,
     по проекту указания ЦБ, — а открывать отчёт после такой фразы
     у человека нет причины.
     """
-    from ..report import URGENCY_META, ORDER
+    from ..report import URGENCY_META, ORDER, _plural
     from ..util import now_msk, squeeze
 
     counts = {u: len(buckets.get(u) or []) for u in ORDER}
@@ -233,23 +243,32 @@ def payload_for(buckets: dict, period_label: str, alert_mode: bool,
         url = top["url"] or (base_url or "./")
         level = "critical"
     else:
-        title = f"Регмонитор · {period_label}"
         soon = _closest_deadline(deadlines)
-        if not total:
+        top = _top_row(buckets)
+        if not total or top is None:
+            title = f"Регмонитор · {period_label}"
             body = "Значимых изменений нет"
             if soon:
                 body += f". {soon}"
+            url = base_url or "./"
         else:
-            parts = []
-            if critical:
-                parts.append(f"{critical} требует решения")
-            if counts["high"]:
-                parts.append(f"{counts['high']} важных")
-            parts.append(f"всего {total}")
-            body = ", ".join(parts)
+            # Раньше в уведомлении были одни числа: «2 требует решения,
+            # всего 5». Числа не говорят, случилось ли что-то по твоей теме,
+            # — чтобы это понять, надо открыть приложение. Заголовок главного
+            # документа отвечает на вопрос сразу, а числа уходят в подпись.
+            title = squeeze(top["title"], MAX_TITLE)
+            bits = [top["authority"]]
+            if top["stage"]:
+                bits.append(squeeze(top["stage"], 60))
+            if total > 1:
+                rest = total - 1
+                bits.append(f"ещё {rest} {_plural(rest, 'документ', 'документа', 'документов')}")
+            body = " · ".join(b for b in bits if b)
             if soon:
                 body += f". {soon}"
-        url = base_url or "./"
+            # Ведём в приложение, а не на сайт ведомства: в отчёте лежит
+            # и этот документ, и остальные, которые уведомление не вместило.
+            url = base_url or "./"
         # Срок, истекающий сегодня или завтра, поднимает важность: такое
         # уведомление не должно теряться среди обычных.
         urgent_deadline = bool(soon and ("сегодня" in soon or "завтра" in soon))
@@ -357,7 +376,8 @@ def export_reports(root: Path, reports_dir: Path, limit: int = 12) -> int:
         json.dumps({"reports": index}, ensure_ascii=False, indent=1), encoding="utf-8")
     return len(index)
 
-def export_documents(root: Path, store, floor: float = 0.45, limit: int = 1500) -> int:
+def export_documents(root: Path, store, floor: float = 0.45, limit: int = 1500,
+                     skip_authorities=()) -> int:
     """Выкладывает указатель документов рядом с отчётами.
 
     Приложение до сих пор было устроено вокруг отчётов: «вот отчёт за
@@ -367,6 +387,11 @@ def export_documents(root: Path, store, floor: float = 0.45, limit: int = 1500) 
 
     Данные для этого давно копятся, не хватало только вида. Кладём их
     отдельным файлом: страница указателя работает без сервера, как и отчёт.
+
+    skip_authorities — кого не показывать. Указатель отвечает на вопрос
+    «что регулируется», поэтому в нём только те, кто регулирует. Пересказы
+    в деловых лентах и акты, уже попавшие на портал опубликования, агент
+    собирает и показывает в отчёте, но справочник ими не наполняет.
     """
     webapp = root / "webapp"
     if not webapp.exists():
@@ -378,10 +403,15 @@ def export_documents(root: Path, store, floor: float = 0.45, limit: int = 1500) 
                    WHERE e.item_id = i.id AND e.event_type != 'new') AS changes
            FROM items i LEFT JOIN scores s ON s.item_id = i.id"""
 
+    # Отсекаем в запросе, а не после: иначе отброшенные съедали бы LIMIT,
+    # и указатель оказался бы короче, чем просили.
+    skip = [a for a in (skip_authorities or []) if a]
+    cut = (" AND i.authority NOT IN (%s)" % ",".join("?" * len(skip))) if skip else ""
+
     rows = store.db.execute(
-        COLS + """ WHERE s.relevance >= ?
+        COLS + " WHERE s.relevance >= ?" + cut + """
            ORDER BY COALESCE(i.published_at, i.first_seen) DESC
-           LIMIT ?""", (floor, limit)).fetchall()
+           LIMIT ?""", (floor, *skip, limit)).fetchall()
 
     # Отдельно — то, у чего открыт срок замечаний. Оценка значимости тут
     # не судья: пять проектов указаний ЦБ с открытым обсуждением набрали
@@ -390,7 +420,7 @@ def export_documents(root: Path, store, floor: float = 0.45, limit: int = 1500) 
     # живёт по тому же правилу — указатель не должен быть строже.
     known = {r["id"] for r in rows}
     extra = [r for r in store.db.execute(
-        COLS + " WHERE i.meta LIKE '%comments_until%'").fetchall()
+        COLS + " WHERE i.meta LIKE '%comments_until%'" + cut, tuple(skip)).fetchall()
         if r["id"] not in known]
 
     from ..report import _stage_short, MONTHS
@@ -446,11 +476,41 @@ def export_documents(root: Path, store, floor: float = 0.45, limit: int = 1500) 
     docs.sort(key=lambda d: d["sort"], reverse=True)
     del docs[limit:]
 
-    (webapp / "documents.json").write_text(
+    # Файл уезжает в репозиторий при каждом прогоне, а прогонов восемь в сутки.
+    # Если переписывать его всегда, меняться будет одна отметка времени —
+    # и это 44 КБ нового объекта в истории восемь раз в день ни за что.
+    # Отметка «когда агент последний раз выходил на связь» живёт отдельно,
+    # в status.json, и весит сотню байт.
+    out = webapp / "documents.json"
+    if out.exists():
+        try:
+            if json.loads(out.read_text(encoding="utf-8")).get("documents") == docs:
+                return len(docs)      # ничего не изменилось — не трогаем файл
+        except Exception:
+            pass                      # файл битый — перезапишем
+
+    out.write_text(
         json.dumps({"updated": iso_now(), "total": len(docs), "documents": docs},
                    ensure_ascii=False, separators=(",", ":")),
         encoding="utf-8")
     return len(docs)
+
+
+def export_status(root: Path, documents: int = 0, reports: int = 0) -> None:
+    """Отметка «агент выходил на связь».
+
+    Без неё сломавшийся агент выглядит как спокойный день: приложение
+    показывает вчерашний отчёт, и отличить «новостей нет» от «сбор не идёт»
+    нельзя. Файл маленький намеренно — он переписывается каждый прогон
+    и уезжает в репозиторий вместе с сайтом.
+    """
+    webapp = root / "webapp"
+    if not webapp.exists():
+        return
+    (webapp / "status.json").write_text(
+        json.dumps({"checked": iso_now(), "documents": documents, "reports": reports},
+                   ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8")
 
 
 def iso_now() -> str:
