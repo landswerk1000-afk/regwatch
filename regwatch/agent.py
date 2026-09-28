@@ -209,6 +209,25 @@ class Agent:
         return f"{now_msk():%d.%m} — {tail}"
 
     # ---------- прогон ----------
+    def export_webapp(self) -> None:
+        """Обновляет файлы приложения: список отчётов и указатель документов.
+
+        Два вызова, но обработка сбоев у каждого своя. Список отчётов —
+        единственный способ открыть отчёт с телефона, указатель — удобство
+        поверх. Если не собрался указатель, отчёты выложить всё равно надо.
+        """
+        try:
+            webpush.export_reports(self.cfg.root, self.cfg.reports_dir)
+        except Exception as e:
+            log.warning("выгрузка отчётов в webapp не удалась: %s: %s",
+                        type(e).__name__, e)
+        try:
+            n = webpush.export_documents(self.cfg.root, self.store)
+            log.info("указатель документов: %d документов", n)
+        except Exception as e:
+            log.warning("указатель документов не собран: %s: %s",
+                        type(e).__name__, e)
+
     def run(self, alert_mode: bool = False, dry_run: bool = False,
             skip_collect: bool = False, mark: bool = True) -> dict:
         stats = {} if skip_collect else self.collect()
@@ -232,10 +251,7 @@ class Agent:
             # в том виде, в каком его оставил последний ежедневный прогон,
             # и любая рассинхронизация живёт до следующего утра. Именно так
             # 27 сентября на сайте оказался список из файлов, которых там нет.
-            try:
-                webpush.export_reports(self.cfg.root, self.cfg.reports_dir)
-            except Exception as e:
-                log.warning("выгрузка в webapp не удалась: %s", e)
+            self.export_webapp()
             out["delivery"] = "нет срочных событий — письмо не отправлено"
             return out
 
@@ -250,8 +266,12 @@ class Agent:
         # останавливать рассылку: остальные каналы работают без него.
         if pdf.configured(self.cfg.root):
             try:
-                res = pdf.build(self.cfg.root, R.to_model(buckets, rows, health_rows,
-                                                          label, dls, act),
+                # to_model не принимает полосу активности: она рисуется
+                # инлайновым SVG и живёт только в HTML. Лишний аргумент сюда
+                # попал вместе с полосой и ронял сборку PDF молча —
+                # руководителю уходило письмо без вложения.
+                res = pdf.build(self.cfg.root,
+                                R.to_model(buckets, rows, health_rows, label, dls),
                                 path.with_suffix(".pdf"))
                 out["pdf"] = res.get("path")
                 log.info("PDF собран (%s, %d байт)", res.get("font"), res.get("bytes", 0))
@@ -264,10 +284,7 @@ class Agent:
         channels = []
         # Отчёты кладём в веб-приложение до рассылки: уведомление ведёт на них,
         # и к моменту клика страница уже должна быть актуальной.
-        try:
-            webpush.export_reports(self.cfg.root, self.cfg.reports_dir)
-        except Exception as e:
-            log.warning("выгрузка в webapp не удалась: %s", e)
+        self.export_webapp()
 
         # Публикация на GitHub Pages. Без неё приложение на телефоне
         # показывает вчерашний отчёт: агент кладёт файлы локально, а сайт

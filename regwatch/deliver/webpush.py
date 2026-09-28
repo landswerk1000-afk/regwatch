@@ -356,3 +356,103 @@ def export_reports(root: Path, reports_dir: Path, limit: int = 12) -> int:
     (webapp / "latest.json").write_text(
         json.dumps({"reports": index}, ensure_ascii=False, indent=1), encoding="utf-8")
     return len(index)
+
+def export_documents(root: Path, store, floor: float = 0.45, limit: int = 1500) -> int:
+    """Выкладывает указатель документов рядом с отчётами.
+
+    Приложение до сих пор было устроено вокруг отчётов: «вот отчёт за
+    28 сентября». Но юрист думает документами — «что у нас по ЦФА». Найти
+    конкретный проект указания можно было только открывая отчёты по одному,
+    а их к декабрю будет под сотню.
+
+    Данные для этого давно копятся, не хватало только вида. Кладём их
+    отдельным файлом: страница указателя работает без сервера, как и отчёт.
+    """
+    webapp = root / "webapp"
+    if not webapp.exists():
+        return 0
+
+    COLS = """SELECT i.id, i.title, i.authority, i.url, i.stage, i.published_at,
+                  i.first_seen, i.meta, s.topics,
+                  (SELECT COUNT(*) FROM events e
+                   WHERE e.item_id = i.id AND e.event_type != 'new') AS changes
+           FROM items i LEFT JOIN scores s ON s.item_id = i.id"""
+
+    rows = store.db.execute(
+        COLS + """ WHERE s.relevance >= ?
+           ORDER BY COALESCE(i.published_at, i.first_seen) DESC
+           LIMIT ?""", (floor, limit)).fetchall()
+
+    # Отдельно — то, у чего открыт срок замечаний. Оценка значимости тут
+    # не судья: пять проектов указаний ЦБ с открытым обсуждением набрали
+    # ноль (словарь тем до них не дотянулся), а это ровно те документы,
+    # по которым ещё можно что-то сказать. В отчёте блок сроков давно
+    # живёт по тому же правилу — указатель не должен быть строже.
+    known = {r["id"] for r in rows}
+    extra = [r for r in store.db.execute(
+        COLS + " WHERE i.meta LIKE '%comments_until%'").fetchall()
+        if r["id"] not in known]
+
+    from ..report import _stage_short, MONTHS
+    from ..util import parse_dt, squeeze, now_msk
+    from datetime import timedelta
+
+    stale = now_msk() - timedelta(days=60)
+    picked = list(rows)
+    for r in extra:
+        try:
+            raw = (json.loads(r["meta"] or "{}") or {}).get("comments_until")
+        except Exception:
+            raw = None
+        dt = parse_dt(raw) if raw else None
+        # Совсем старые обсуждения не тянем: они уже история, а не работа.
+        if dt and dt >= stale:
+            picked.append(r)
+
+    docs = []
+    for r in picked:
+        try:
+            meta = json.loads(r["meta"] or "{}")
+        except Exception:
+            meta = {}
+        try:
+            topics = json.loads(r["topics"] or "[]")
+        except Exception:
+            topics = []
+        code, stage = _stage_short(r["stage"])
+        dt = parse_dt(r["published_at"]) or parse_dt(r["first_seen"])
+        docs.append({
+            "id": r["id"],
+            "title": squeeze(r["title"], 300),
+            "org": r["authority"],
+            "url": r["url"] or "",
+            "stage": squeeze(stage, 140) if stage else "",
+            "code": code or "",
+            "date": f"{dt.day} {MONTHS[dt.month - 1]} {dt.year}" if dt else "",
+            "sort": (r["published_at"] or r["first_seen"] or "")[:10],
+            "topics": topics[:4],
+            "deadline": meta.get("comments_until") or "",
+            # Машинная дата рядом с человеческой: по ней страница отличает
+            # открытый срок от прошедшего, не разбирая «25 сентября 2026».
+            "deadline_iso": (lambda d: d.strftime("%Y-%m-%d") if d else "")(
+                parse_dt(meta.get("comments_until")) if meta.get("comments_until") else None),
+            # Документ, сменивший стадию, — новость крупнее нового: он живёт
+            # и движется. Отмечаем, чтобы это было видно в списке.
+            "changed": int(r["changes"] or 0),
+        })
+
+    # Сортируем уже в Python: во втором запросе свой порядок, и без этого
+    # документы со сроком замечаний оказались бы хвостом списка.
+    docs.sort(key=lambda d: d["sort"], reverse=True)
+    del docs[limit:]
+
+    (webapp / "documents.json").write_text(
+        json.dumps({"updated": iso_now(), "total": len(docs), "documents": docs},
+                   ensure_ascii=False, separators=(",", ":")),
+        encoding="utf-8")
+    return len(docs)
+
+
+def iso_now() -> str:
+    from ..util import now_utc, iso
+    return iso(now_utc())

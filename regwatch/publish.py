@@ -80,7 +80,7 @@ def _run(args, cwd=None, token=None, timeout=120):
 REPORT_NAME = re.compile(r"^\d{4}-\d{2}-\d{2}_\d{4}_(daily|alert)\.html$")
 
 
-def _sync(src: Path, dst: Path) -> None:
+def _sync(src: Path, dst: Path, keep_reports: int = 12) -> None:
     """Обновляет файлы сайта в рабочей копии.
 
     ВАЖНО: трогает только сайт. Прежняя версия чистила рабочую копию
@@ -90,19 +90,21 @@ def _sync(src: Path, dst: Path) -> None:
     запускаться вовсе. Не выстрелило лишь потому, что на сервере
     публикация отключена, а локально шли сухие прогоны.
 
-    Поэтому: файлы из webapp/ добавляем и обновляем, а удаляем ровно одно —
-    отчёты, выпавшие из окна. Всё остальное в репозитории не наше.
+    Отчёты не сверяем с локальной папкой. Сервер и ноутбук ведут свои
+    истории: утренний прогон в облаке кладёт отчёт, которого на ноутбуке
+    нет и не будет. Правило «нет локально — удалить» снесло бы его с сайта.
+    Поэтому берём объединение и оставляем N самых свежих по имени —
+    имя начинается с даты, так что это и есть «самые свежие».
     """
-    keep = set()
     for f in src.iterdir():
         if f.name.startswith(".") or f.is_dir():
             continue
-        keep.add(f.name)
         shutil.copy2(f, dst / f.name)
 
-    for old in dst.iterdir():
-        if old.is_file() and REPORT_NAME.match(old.name) and old.name not in keep:
-            old.unlink()
+    names = sorted((p.name for p in dst.iterdir()
+                    if p.is_file() and REPORT_NAME.match(p.name)), reverse=True)
+    for stale in names[keep_reports:]:
+        (dst / stale).unlink()
 
 
 def publish(root: Path) -> dict:

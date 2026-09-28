@@ -1,0 +1,461 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Указатель документов — Регмонитор</title>
+<meta name="theme-color" content="#F6F7F8">
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="./app.css">
+<style>
+  /* Только то, что есть на этой странице. Общее живёт в app.css. */
+  .search{position:relative;margin-bottom:12px}
+  .search input{width:100%;font:inherit;font-size:15px;padding:12px 38px;
+    border:1px solid var(--line);border-radius:2px;background:var(--card);
+    color:var(--ink);transition:border-color .15s ease}
+  .search input::-webkit-search-cancel-button{display:none}
+  .search input:focus{outline:none;border-color:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft)}
+  .search .mag{position:absolute;left:13px;top:50%;transform:translateY(-50%);
+    color:var(--faint);pointer-events:none}
+  .search .clr{position:absolute;right:5px;top:50%;transform:translateY(-50%);
+    width:30px;height:30px;min-width:0;border:0;background:none;color:var(--faint);
+    cursor:pointer;font-size:19px;line-height:1;padding:0}
+  .search .clr:hover{color:var(--ink);filter:none}
+
+  /* Отборы. Порядок кнопок задаётся один раз и больше не меняется:
+     если бы они пересортировывались под текущую выборку, палец каждый раз
+     попадал бы не туда, куда целился. */
+  .flab{font-size:9.5px;font-weight:700;letter-spacing:1.6px;text-transform:uppercase;
+        color:var(--faint);margin:0 0 6px}
+  #topicsLab,#dueLab{margin-top:12px}
+  .facet.due .chip{color:var(--crit)}
+  .facet.due .chip[aria-pressed="true"]{background:var(--crit-soft);
+    border-color:var(--crit);color:var(--ink)}
+  .facet{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:0}
+  /* max-width + перенос: иначе длинное название темы («Стратегические
+     документы (ОНРФР, ОНЕДКП)») на телефоне вылезает за край карточки.
+     Перенос сработает только у той кнопки, которой не хватило строки. */
+  .facet .chip{width:auto;max-width:100%;font:inherit;font-size:12px;cursor:pointer;
+    background:var(--card);border:1px solid var(--line);border-radius:2px;
+    padding:5px 10px;color:var(--muted);text-align:left;line-height:1.35;
+    transition:border-color .15s ease, background-color .15s ease, opacity .15s ease}
+  .facet .chip:hover{border-color:var(--accent);filter:none}
+  .facet .chip:active{transform:none}
+  .facet .chip[aria-pressed="true"]{background:var(--accent-soft);
+    border-color:var(--accent);color:var(--ink);font-weight:600}
+  .facet .chip[disabled]{opacity:.38;cursor:default}
+  .facet .chip .n{color:var(--faint);margin-left:5px;font-weight:400}
+  .facet .chip[aria-pressed="true"] .n{color:var(--accent-ink)}
+  .facet.topics .chip{color:var(--accent-ink)}
+
+  .count{font-size:11.5px;color:var(--faint);margin:16px 0 4px;
+         display:flex;justify-content:space-between;align-items:baseline;gap:12px}
+  .count button{width:auto;min-width:0;background:none;border:0;padding:0;
+    font:inherit;font-size:11.5px;font-weight:600;color:var(--accent-ink);
+    cursor:pointer;white-space:nowrap}
+  .count button:hover{filter:none;text-decoration:underline}
+  .count button:active{transform:none}
+
+  .doc{display:block;padding:14px 0;border-top:1px solid var(--line-soft);
+       text-decoration:none;color:var(--ink)}
+  #list > :first-child{border-top:0}
+  .doc .m{font-size:10.5px;color:var(--faint);margin-bottom:5px;
+          display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline}
+  .doc .org{font-weight:700;letter-spacing:.7px;text-transform:uppercase;
+            color:var(--accent-ink)}
+  .doc .t{font-size:14px;line-height:1.42;font-weight:500;overflow-wrap:anywhere}
+  .doc:hover .t{color:var(--accent-ink)}
+  .doc .st,.doc .dl{display:inline-block;font-size:11.5px;color:var(--ink);
+    padding:4px 9px;margin-top:7px;overflow-wrap:anywhere}
+  .doc .st{background:var(--surface);border-left:2px solid var(--line)}
+  .doc .dl{background:var(--accent-soft);border-left:2px solid var(--accent);
+    font-weight:500}
+  /* Горящий срок и прошедший — разные вещи, и выглядеть должны по-разному.
+     Бирюзовая плашка на закрытом обсуждении обманывает: выглядит делом,
+     а делать уже нечего. */
+  .doc .dl.soon{background:var(--crit-soft);border-left-color:var(--crit)}
+  .doc .dl.past{background:var(--surface);border-left-color:var(--line);
+    color:var(--faint);font-weight:400}
+  .doc .dl .when{font-weight:700;color:var(--crit)}
+  .doc .moved{color:var(--accent-ink);font-weight:600}
+  .doc .tp{margin-top:7px;font-size:10.5px;color:var(--faint);
+           display:flex;flex-wrap:wrap;gap:2px 12px}
+  .none{padding:24px 0;color:var(--muted);font-size:14px;line-height:1.6}
+  .upd{margin-top:16px;font-size:11px;color:var(--faint);text-align:center}
+  @media (max-width:420px){
+    .facet .chip{font-size:11.5px;padding:5px 8px}
+    .count{flex-wrap:wrap;gap:4px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="./">← К отчётам</a>
+
+  <header>
+    <div class="kicker">Мониторинг регулирования</div>
+    <h1>Указатель документов</h1>
+    <div class="sub">Всё, что агент счёл значимым, одним списком</div>
+  </header>
+  <div class="headrule"></div>
+
+  <div class="card">
+    <div class="search">
+      <svg class="mag" width="15" height="15" viewBox="0 0 16 16" fill="none"
+           stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+        <circle cx="6.9" cy="6.9" r="4.6"/><path d="M10.3 10.3 14 14"/>
+      </svg>
+      <input id="q" type="search" placeholder="Поиск: ЦФА, инвестор, биржа…"
+             autocomplete="off" spellcheck="false" aria-label="Поиск по документам">
+      <button class="clr hidden" id="clr" type="button" aria-label="Очистить поиск">×</button>
+    </div>
+
+    <div class="flab" id="orgsLab">Орган</div>
+    <div class="facet orgs" id="orgs" role="group" aria-labelledby="orgsLab"></div>
+    <div class="flab" id="topicsLab">Тема</div>
+    <div class="facet topics" id="topics" role="group" aria-labelledby="topicsLab"></div>
+    <div class="flab hidden" id="dueLab">Срок замечаний</div>
+    <div class="facet due hidden" id="due" role="group" aria-labelledby="dueLab"></div>
+
+    <div class="count">
+      <span id="count" role="status">Загружаю…</span>
+      <button type="button" id="reset" class="hidden">Сбросить отбор</button>
+    </div>
+
+    <div id="list" aria-busy="true">
+      <div class="sk"><span></span><span></span></div>
+      <div class="sk"><span></span><span></span></div>
+      <div class="sk"><span></span><span></span></div>
+      <div class="sk"><span></span><span></span></div>
+    </div>
+  </div>
+
+  <div class="upd" id="upd"></div>
+
+  <footer>
+    Автоматический мониторинг первоисточников.<br>
+    Сведения приведены по данным госпорталов на момент сбора.
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var MAX = 300;                       // столько показываем сразу
+  var DOCS = [], org = '', topic = '', due = '', q = '', QW = [];
+  var orgBtns = [], topicBtns = [], dueBtns = [];
+
+  /* ---- мелочи ---- */
+
+  function norm(s) { return (s || '').toLowerCase().replace(/ё/g, 'е'); }
+
+  // Русские окончания. Морфологию тут не разберёшь, но и не надо: ищем
+  // подстроку, а слово из запроса заодно пробуем укороченным с конца.
+  // «указание» не входит в «указания», зато «указани» входит в оба.
+  //
+  // Отрезаем не больше четырёх букв и не больше 40% слова. Короткие слова
+  // при этом почти не трогаем — и правильно: «торги» → «торг» полезно,
+  // а «тор» нашлось бы в «директор» и «история». Отсюда и нижняя граница
+  // в четыре буквы: «цфа», «пиф», «иис» ищутся как есть.
+  function stems(w) {
+    var out = [w];
+    var floor = Math.max(4, Math.ceil(w.length * 0.6));
+    for (var k = 1; k <= 4 && w.length - k >= floor; k++) {
+      out.push(w.slice(0, w.length - k));
+    }
+    return out;
+  }
+
+  function words(query) {
+    return query.split(/\s+/).filter(Boolean).map(stems);
+  }
+
+  // 1 документ, 2 документа, 5 документов. Руководитель читает это глазами,
+  // и «5 документа» бросается в глаза сильнее, чем кажется.
+  function plural(n, one, few, many) {
+    var a = Math.abs(n) % 100, b = a % 10;
+    if (a > 10 && a < 20) return many;
+    if (b > 1 && b < 5) return few;
+    if (b === 1) return one;
+    return many;
+  }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
+  // Ссылки берутся из базы, но в разметку попадают только http(s):
+  // ничего другого в атрибуте href делать нечего.
+  function safeUrl(u) {
+    return /^https?:\/\//i.test(u || '') ? u : '';
+  }
+
+  // Сколько дней до срока. Считаем по календарным суткам устройства,
+  // а не по часам: «через 0 дней» и «сегодня» — не одно и то же.
+  function daysLeft(iso) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+    if (!m) return null;
+    var n = new Date();
+    return Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) -
+                       Date.UTC(n.getFullYear(), n.getMonth(), n.getDate())) / 86400000);
+  }
+
+  // Срок ещё открыт — значит, по документу можно что-то сделать.
+  // Ради этого отбора указатель и нужен чаще всего.
+  function isOpen(d) {
+    var left = daysLeft(d.deadline_iso);
+    return left !== null && left >= 0;
+  }
+
+  function deadlineHtml(d) {
+    if (!d.deadline) return '';
+    var left = daysLeft(d.deadline_iso);
+    if (left === null) {
+      return '<div><span class="dl">Замечания до ' + esc(d.deadline) + '</span></div>';
+    }
+    if (left < 0) {
+      return '<div><span class="dl past">Замечания принимались до ' +
+        esc(d.deadline) + '</span></div>';
+    }
+    var when = left === 0 ? 'сегодня'
+             : left === 1 ? 'завтра'
+             : 'через ' + left + ' ' + plural(left, 'день', 'дня', 'дней');
+    var soon = left <= 7 ? ' soon' : '';
+    return '<div><span class="dl' + soon + '">Замечания до ' + esc(d.deadline) +
+      ' — <span class="when">' + when + '</span></span></div>';
+  }
+
+  function hay(d) {
+    if (d._h === undefined) {
+      d._h = norm([d.title, d.org, d.stage, d.code,
+                   (d.topics || []).join(' ')].join(' '));
+    }
+    return d._h;
+  }
+
+  /* ---- отбор ----
+     skip — измерение, которое не учитываем. Так кнопка «ЦБ» показывает,
+     сколько будет документов, если её нажать, а не сколько их всего.
+     Иначе кнопка с числом 12 могла бы дать пустой список. */
+  function passes(d, skip) {
+    if (skip !== 'org' && org && d.org !== org) return false;
+    if (skip !== 'topic' && topic && (d.topics || []).indexOf(topic) < 0) return false;
+    if (skip !== 'due' && due && !isOpen(d)) return false;
+    if (QW.length) {
+      var h = hay(d);
+      for (var i = 0; i < QW.length; i++) {
+        var v = QW[i], hit = false;
+        for (var j = 0; j < v.length && !hit; j++) hit = h.indexOf(v[j]) >= 0;
+        if (!hit) return false;
+      }
+    }
+    return true;
+  }
+
+  /* ---- вид ---- */
+
+  function docHtml(d) {
+    var meta = ['<span class="org">' + esc(d.org) + '</span>'];
+    if (d.date) meta.push('<span>' + esc(d.date) + '</span>');
+    if (d.changed) {
+      meta.push('<span class="moved">стадия менялась ' + d.changed + ' ' +
+        plural(d.changed, 'раз', 'раза', 'раз') + '</span>');
+    }
+    var h = '<div class="m">' + meta.join('') + '</div>' +
+            '<div class="t">' + esc(d.title) + '</div>';
+    if (d.stage) {
+      h += '<div><span class="st">' +
+        (d.code ? '<b>' + esc(d.code) + '</b> · ' : '') + esc(d.stage) + '</span></div>';
+    }
+    h += deadlineHtml(d);
+    if (d.topics && d.topics.length) {
+      h += '<div class="tp">' + d.topics.map(function (t) {
+        return '<span>' + esc(t) + '</span>';
+      }).join('') + '</div>';
+    }
+    var u = safeUrl(d.url);
+    return u
+      ? '<a class="doc" href="' + esc(u) + '" target="_blank" rel="noopener noreferrer">' +
+        h + '</a>'
+      : '<div class="doc">' + h + '</div>';
+  }
+
+  function paintChips(btns, counts) {
+    btns.forEach(function (b) {
+      var n = counts[b.dataset.key] || 0;
+      var on = b.getAttribute('aria-pressed') === 'true';
+      b.querySelector('.n').textContent = n;
+      // Нажатую кнопку не гасим никогда: иначе из пустой выборки
+      // не выйти — снять отбор будет нечем.
+      b.disabled = !on && n === 0;
+    });
+  }
+
+  function render() {
+    var found = [], byOrg = {}, byTopic = {};
+    DOCS.forEach(function (d) {
+      if (passes(d, null)) found.push(d);
+      if (passes(d, 'org')) byOrg[d.org] = (byOrg[d.org] || 0) + 1;
+      if (passes(d, 'topic')) {
+        (d.topics || []).forEach(function (t) { byTopic[t] = (byTopic[t] || 0) + 1; });
+      }
+    });
+    byOrg[''] = DOCS.filter(function (d) { return passes(d, 'org'); }).length;
+    var nOpen = DOCS.filter(function (d) { return passes(d, 'due') && isOpen(d); }).length;
+
+    orgBtns.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.key === org));
+    });
+    topicBtns.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.key === topic));
+    });
+    dueBtns.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.dataset.key === due));
+    });
+    paintChips(orgBtns, byOrg);
+    paintChips(topicBtns, byTopic);
+    paintChips(dueBtns, { open: nOpen });
+
+    var filtered = !!(org || topic || due || q);
+    $('reset').classList.toggle('hidden', !filtered);
+    $('count').textContent = found.length
+      ? (filtered ? 'Найдено ' : 'Всего ') + found.length + ' ' +
+        plural(found.length, 'документ', 'документа', 'документов')
+      : 'Ничего не найдено';
+
+    var list = $('list');
+    list.removeAttribute('aria-busy');
+    if (!found.length) {
+      list.innerHTML = '<div class="none">По этому запросу ничего нет.' +
+        '<br>Попробуйте короче — «ЦФА» вместо «цифровые финансовые активы».</div>';
+      return;
+    }
+    var html = found.slice(0, MAX).map(docHtml).join('');
+    if (found.length > MAX) {
+      html += '<div class="none">Показаны первые ' + MAX +
+        '. Уточните запрос, чтобы увидеть остальные.</div>';
+    }
+    list.innerHTML = html;
+  }
+
+  /* ---- кнопки отбора строятся один раз ---- */
+
+  function buildChips(box, keys, labels, current, onPick) {
+    var made = [];
+    keys.forEach(function (k) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.dataset.key = k;
+      b.setAttribute('aria-pressed', 'false');
+      b.appendChild(document.createTextNode(labels[k] || k));
+      var n = document.createElement('span');
+      n.className = 'n';
+      b.appendChild(n);
+      b.addEventListener('click', function () {
+        // Повторное нажатие снимает отбор. Без этого выйти можно только
+        // через «Все», а её замечают не сразу.
+        onPick(k === current() ? '' : k);
+        render();
+      });
+      box.appendChild(b);
+      made.push(b);
+    });
+    return made;
+  }
+
+  function init(d) {
+    DOCS = (d && d.documents) || [];
+
+    var totOrg = {}, totTopic = {};
+    DOCS.forEach(function (x) {
+      totOrg[x.org] = (totOrg[x.org] || 0) + 1;
+      (x.topics || []).forEach(function (t) { totTopic[t] = (totTopic[t] || 0) + 1; });
+    });
+    var byCount = function (t) {
+      return function (a, b) { return t[b] - t[a] || a.localeCompare(b, 'ru'); };
+    };
+
+    var orgKeys = [''].concat(Object.keys(totOrg).sort(byCount(totOrg)));
+    orgBtns = buildChips($('orgs'), orgKeys, { '': 'Все органы' },
+      function () { return org; }, function (v) { org = v; });
+
+    var topKeys = Object.keys(totTopic).sort(byCount(totTopic)).slice(0, 8);
+    topicBtns = buildChips($('topics'), topKeys, {},
+      function () { return topic; }, function (v) { topic = v; });
+    if (!topKeys.length) {
+      $('topics').classList.add('hidden');
+      $('topicsLab').classList.add('hidden');
+    }
+
+    // Ряда со сроком нет, когда открытых обсуждений нет вовсе: пустая
+    // кнопка «0» только мешала бы.
+    if (DOCS.some(isOpen)) {
+      dueBtns = buildChips($('due'), ['open'], { open: 'Открыт для замечаний' },
+        function () { return due; }, function (v) { due = v; });
+      $('due').classList.remove('hidden');
+      $('dueLab').classList.remove('hidden');
+    }
+
+    if (d && d.updated) {
+      var u = new Date(d.updated);
+      if (!isNaN(u.getTime())) {
+        $('upd').textContent = 'Обновлено ' + u.toLocaleString('ru-RU',
+          { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
+      }
+    }
+    render();
+  }
+
+  var t = null;
+  $('q').addEventListener('input', function (e) {
+    $('clr').classList.toggle('hidden', !e.target.value);
+    // Ждём паузы в наборе: перерисовывать сотню карточек на каждую букву незачем.
+    clearTimeout(t);
+    t = setTimeout(function () {
+      q = norm(e.target.value).trim();
+      QW = words(q);
+      render();
+    }, 120);
+  });
+  $('q').addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && e.target.value) { e.preventDefault(); clear(); }
+  });
+  function clear() {
+    $('q').value = ''; q = ''; QW = [];
+    clearTimeout(t);
+    $('clr').classList.add('hidden');
+    render();
+  }
+  $('clr').addEventListener('click', function () { clear(); $('q').focus(); });
+  $('reset').addEventListener('click', function () {
+    org = ''; topic = ''; due = '';
+    clear();
+    $('q').focus();
+  });
+
+  fetch('./documents.json', { cache: 'no-store' }).then(function (r) {
+    if (!r.ok) throw new Error('нет файла');
+    return r.json();
+  }).then(init).catch(function () {
+    $('list').removeAttribute('aria-busy');
+    $('list').innerHTML = '<div class="none">Указатель пока не собран.' +
+      '<br>Он появится после ближайшего прогона агента.</div>';
+    $('count').textContent = '';
+    ['orgs', 'orgsLab', 'topics', 'topicsLab', 'due', 'dueLab'].forEach(function (id) {
+      $(id).classList.add('hidden');
+    });
+  });
+})();
+</script>
+</body>
+</html>

@@ -641,8 +641,19 @@ _css = _B.css_variables()
 check("палитра отдаётся как CSS-переменные",
       "--accent: #06b6cb" in _css and "--u-critical" in _css)
 
-# Отчёт и приложение должны брать один и тот же акцент.
-_app = (Path(__file__).resolve().parent / "webapp" / "index.html").read_text(encoding="utf-8")
+# Отчёт и приложение должны брать один и тот же акцент. Стили приложения
+# лежат отдельным файлом, поэтому смотрим страницу вместе с ним: проверяем
+# приложение, а не то, в каком файле оно хранит правило.
+_WEBAPP = Path(__file__).resolve().parent / "webapp"
+
+
+def _app_css(*names) -> str:
+    """Страницы приложения и общий лист — одним куском."""
+    return "\n".join((_WEBAPP / n).read_text(encoding="utf-8")
+                      for n in (names or ("index.html", "app.css")))
+
+
+_app = _app_css()
 check("приложение использует тот же акцент", _B.ACCENT in _app)
 check("приложение подключает Inter", "family=Inter" in _app)
 
@@ -985,8 +996,11 @@ _repo18.mkdir(parents=True); _web18.mkdir(parents=True)
 (_repo18 / "regwatch" / "agent.py").write_text("код", encoding="utf-8")
 (_repo18 / ".github").mkdir()
 (_repo18 / ".github" / "wf.yml").write_text("расписание", encoding="utf-8")
-for _n18 in ("README.md", "selftest.py", "index.html",
-             "2026-09-01_0900_daily.html", "2026-09-26_0946_daily.html"):
+# «Только на сервере» — обычное дело: утренний прогон идёт в облаке,
+# и на ноутбуке того отчёта нет. Он не должен исчезать с сайта.
+_only18 = "2026-09-28_0949_daily.html"
+for _n18 in ("README.md", "selftest.py", "index.html", _only18,
+             "2026-09-26_0946_daily.html"):
     (_repo18 / _n18).write_text("старое", encoding="utf-8")
 for _n18 in ("index.html", "config.js",
              "2026-09-26_0946_daily.html", "2026-09-27_1800_daily.html"):
@@ -1000,7 +1014,18 @@ check("README и тесты целы",
       (_repo18 / "README.md").exists() and (_repo18 / "selftest.py").exists())
 check("сайт обновляется", (_repo18 / "index.html").read_text(encoding="utf-8") == "новое")
 check("новый отчёт добавляется", "2026-09-27_1800_daily.html" in _names18)
-check("выпавший из окна отчёт удаляется", "2026-09-01_0900_daily.html" not in _names18)
+check("отчёт, которого нет на ноутбуке, остаётся на сайте", _only18 in _names18,
+      "публикация с ноутбука стирает то, что выложил облачный прогон")
+
+# Окно всё-таки есть — иначе репозиторий будет расти без предела.
+for _i18 in range(20):
+    (_repo18 / f"2026-08-{_i18 + 1:02d}_0900_daily.html").write_text("х", encoding="utf-8")
+_sync18(_web18, _repo18, keep_reports=12)
+_rep18 = sorted(p.name for p in _repo18.iterdir()
+                if p.name.endswith("_daily.html"))
+check("окно отчётов соблюдается", len(_rep18) == 12, f"осталось {len(_rep18)}")
+check("в окне остаются самые свежие", _only18 in _rep18 and
+      "2026-08-01_0900_daily.html" not in _rep18)
 _sh18.rmtree(_b18)
 
 
@@ -1302,11 +1327,170 @@ check("значки контурные", 'fill="none"' in _full23 and "currentCo
 check("значки скрыты от чтения вслух", 'aria-hidden="true"' in _full23)
 
 # Приложение: скелет и уважение к системной настройке движения.
-_app23 = (Path(__file__).resolve().parent / "webapp" / "index.html").read_text(encoding="utf-8")
+_app23 = _app_css("index.html", "documents.html", "app.css")
 check("в приложении есть скелет загрузки", 'class="sk"' in _app23)
 check("состояние загрузки объявлено для чтения вслух", "aria-busy" in _app23)
 check("анимация отключаема системной настройкой",
       "prefers-reduced-motion" in _app23)
+
+
+# --------------------------------- указатель документов: данные и страница
+section("24. Указатель документов")
+import json as _js24, re as _re24, tempfile as _tf24, shutil as _sh24
+from datetime import timedelta as _td24
+from regwatch.store import Store as _St24
+from regwatch.deliver import webpush as _wp24
+from regwatch.util import now_msk as _now24
+
+# Указатель — единственное место, где документ можно найти по названию,
+# а не наткнуться на него в отчёте за нужное число.
+_root24 = Path(_tf24.mkdtemp())
+(_root24 / "webapp").mkdir()
+_st24 = _St24(_root24 / "t.db")
+
+
+def _doc24(iid, title, rel, authority="ЦБ", meta="{}", days_ago=1, stage=None):
+    _st24.db.execute(
+        "INSERT INTO items (id,source,authority,kind,external_id,url,title,stage,"
+        "published_at,first_seen,last_seen,content_hash,meta) VALUES (?,?,?,?,?,?,?,?,"
+        "datetime('now', ?),datetime('now'),datetime('now'),?,?)",
+        (iid, "s", authority, "doc", iid, "https://www.cbr.ru/x", title, stage,
+         f"-{days_ago} days", "h" + iid, meta))
+    _st24.db.execute(
+        "INSERT INTO scores (item_id,relevance,urgency,topics,matched,rationale,scored_at)"
+        " VALUES (?,?,?,?,?,?,datetime('now'))",
+        (iid, rel, "normal", '["ЦФА, цифровые активы, криптовалюта"]', "[]", ""))
+    _st24.db.commit()
+
+
+_soon24 = _now24() + _td24(days=9)
+_gone24 = _now24() - _td24(days=120)
+_MON24 = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля",
+          "августа", "сентября", "октября", "ноября", "декабря"]
+
+
+def _ru24(d):
+    return f"{d.day} {_MON24[d.month - 1]} {d.year}"
+
+
+_doc24("a", "Проект указания о цифровых правах", 0.8, days_ago=1)
+_doc24("b", "Пресс-релиз ни о чём", 0.0, authority="СМИ", days_ago=2)
+# Ноль по теме, но открыто обсуждение: ровно те документы, по которым
+# ещё можно что-то сказать, — их нельзя терять из-за словаря тем.
+_doc24("c", "Проект положения об обязательных нормативах", 0.0, days_ago=3,
+       meta=_js24.dumps({"comments_until": _ru24(_soon24)}))
+_doc24("d", "Проект указания позапрошлогодний", 0.0, days_ago=200,
+       meta=_js24.dumps({"comments_until": _ru24(_gone24)}))
+
+_n24 = _wp24.export_documents(_root24, _st24, floor=0.45)
+_out24 = _js24.loads((_root24 / "webapp" / "documents.json").read_text(encoding="utf-8"))
+_ids24 = [d["id"] for d in _out24["documents"]]
+
+check("файл указателя собран", (_root24 / "webapp" / "documents.json").exists())
+check("значимое попало", "a" in _ids24)
+check("шум отсеян", "b" not in _ids24, f"в списке {_ids24}")
+check("открытый срок замечаний важнее оценки темы", "c" in _ids24,
+      "документ с открытым обсуждением выпал — ради него указатель и нужен")
+check("давно закрытое обсуждение не тянем", "d" not in _ids24)
+check("число в заголовке совпадает со списком",
+      _out24["total"] == len(_out24["documents"]) == _n24)
+
+_c24 = next(d for d in _out24["documents"] if d["id"] == "c")
+check("срок отдан и человеку, и машине",
+      _c24["deadline"] == _ru24(_soon24)
+      and _c24["deadline_iso"] == _soon24.strftime("%Y-%m-%d"),
+      f'{_c24["deadline"]!r} / {_c24["deadline_iso"]!r}')
+check("свежее сверху",
+      all(_out24["documents"][i]["sort"] >= _out24["documents"][i + 1]["sort"]
+          for i in range(len(_out24["documents"]) - 1)))
+check("поля на месте",
+      set(_c24) >= {"id", "title", "org", "url", "stage", "code", "date",
+                    "sort", "topics", "deadline", "deadline_iso", "changed"},
+      f"не хватает {{'id','title','org','url','stage','code','date','sort','topics','deadline','deadline_iso','changed'}} - {set(_c24)}")
+_sh24.rmtree(_root24, ignore_errors=True)
+
+# --- страница ---
+_page24 = (_WEBAPP / "documents.html").read_text(encoding="utf-8")
+_css24 = (_WEBAPP / "app.css").read_text(encoding="utf-8")
+_idx24 = (_WEBAPP / "index.html").read_text(encoding="utf-8")
+_sw24 = (_WEBAPP / "sw.js").read_text(encoding="utf-8")
+
+check("страница берёт общие стили", './app.css' in _page24)
+check("страница читает свой файл данных", "documents.json" in _page24)
+check("с главной есть вход в указатель", "documents.html" in _idx24,
+      "страница есть, но открыть её неоткуда")
+
+# Стили вынесли из страницы — оболочка для работы без сети должна была
+# поехать следом. Один раз это уже забылось.
+check("офлайн-оболочка знает про общий лист", "'./app.css'" in _sw24)
+check("офлайн-оболочка знает про указатель", "'./documents.html'" in _sw24)
+
+# Цвет объявляется в одном месте. Переменная, которой нет в общем листе, —
+# это не «чуть другой оттенок», это отсутствие цвета.
+_declared24 = set(_re24.findall(r"(--[a-z0-9-]+)\s*:", _css24))
+_used24 = set()
+for _t24 in (_page24, _idx24, _css24):
+    _used24 |= set(_re24.findall(r"var\((--[a-z0-9-]+)", _t24))
+check("все цвета объявлены в общем листе", _used24 <= _declared24,
+      f"нет объявления: {sorted(_used24 - _declared24)}")
+
+# Скрипт зовёт элементы по идентификатору. Опечатка тут — пустая страница
+# без единой ошибки в консоли.
+_wanted24 = set(_re24.findall(r"\$\('([A-Za-z0-9_]+)'\)", _page24))
+_have24 = set(_re24.findall(r'id="([A-Za-z0-9_]+)"', _page24))
+check("скрипт зовёт только существующие элементы", _wanted24 <= _have24,
+      f"нет в разметке: {sorted(_wanted24 - _have24)}")
+
+# Названия и ссылки приходят с чужих сайтов и попадают в разметку.
+check("текст экранируется перед вставкой",
+      "&amp;" in _page24 and "&quot;" in _page24)
+check("в ссылку пускаем только http(s)", "^https?:" in _page24,
+      "нет проверки схемы — в href попадёт что угодно")
+
+# Поиск должен переживать склонение: «указание» не входит в «указания».
+check("поиск укорачивает слово с конца", "function stems" in _page24)
+_floor24 = _re24.search(r"Math\.max\((\d+), Math\.ceil\(w\.length \* ([0-9.]+)\)\)",
+                        _page24)
+check("укорачивание ограничено", bool(_floor24) and int(_floor24.group(1)) >= 4,
+      "без нижней границы «торги» превратятся в «тор» и найдут «директор»")
+
+
+# ------------------- вызовы отчёта должны сходиться с его сигнатурами
+section("25. Агент зовёт отчёт по-настоящему")
+import ast as _ast25, inspect as _in25
+from regwatch import report as _R25
+
+# Полоса активности добавилась в render_html — и заодно попала в to_model,
+# который её не принимает. Агент ловил TypeError, писал строчку в журнал
+# и шёл дальше: письмо уходило без PDF, а PDF — это то, что читает
+# руководитель. Три дня никто не знал. Такое должна ловить проверка,
+# а не человек, который однажды заглянет в журнал.
+_src25 = (Path(__file__).resolve().parent / "regwatch" / "agent.py").read_text(encoding="utf-8")
+_tree25 = _ast25.parse(_src25)
+_watch25 = ("to_model", "render_html", "render_markdown", "group", "deadlines")
+_calls25 = [n for n in _ast25.walk(_tree25)
+            if isinstance(n, _ast25.Call)
+            and isinstance(n.func, _ast25.Attribute)
+            and n.func.attr in _watch25]
+
+check("вызовы отчёта найдены в агенте", len(_calls25) >= 4, f"найдено {len(_calls25)}")
+for _c25 in _calls25:
+    _fn25 = getattr(_R25, _c25.func.attr, None)
+    if _fn25 is None:
+        check(f"{_c25.func.attr} существует", False, "функции нет в report.py")
+        continue
+    _star25 = any(isinstance(a, _ast25.Starred) for a in _c25.args)
+    if _star25:
+        skip(f"{_c25.func.attr}(...) — аргументы", "распаковка, арность не видна")
+        continue
+    try:
+        _in25.signature(_fn25).bind(*[None] * len(_c25.args),
+                                    **{k.arg: None for k in _c25.keywords if k.arg})
+        _ok25, _why25 = True, ""
+    except TypeError as _e25:
+        _ok25, _why25 = False, str(_e25)
+    check(f"{_c25.func.attr}(...) в строке {_c25.lineno} сходится с сигнатурой",
+          _ok25, _why25)
 
 
 # ------------------------------------------------------------------ итог
