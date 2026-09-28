@@ -349,6 +349,10 @@ def export_reports(root: Path, reports_dir: Path, limit: int = 12) -> int:
                       "title": f"{kind} — {_human_stamp(f.stem)}",
                       "summary": summary})
 
+    # Ссылка на несуществующий файл хуже отсутствия ссылки: человек жмёт
+    # и получает «страница не найдена», решая, что сломан весь агент.
+    index = [r for r in index if (webapp / r["file"]).exists()]
+
     (webapp / "latest.json").write_text(
         json.dumps({"reports": index}, ensure_ascii=False, indent=1), encoding="utf-8")
     return len(index)

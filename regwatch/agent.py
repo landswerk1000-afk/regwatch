@@ -227,6 +227,14 @@ class Agent:
                "high": len(buckets.get("high") or []), "delivery": None, "path": None}
 
         if alert_mode and total == 0:
+            # Указатель отчётов пересобираем даже здесь. Иначе он застревает
+            # в том виде, в каком его оставил последний ежедневный прогон,
+            # и любая рассинхронизация живёт до следующего утра. Именно так
+            # 27 сентября на сайте оказался список из файлов, которых там нет.
+            try:
+                webpush.export_reports(self.cfg.root, self.cfg.reports_dir)
+            except Exception as e:
+                log.warning("выгрузка в webapp не удалась: %s", e)
             out["delivery"] = "нет срочных событий — письмо не отправлено"
             return out
 

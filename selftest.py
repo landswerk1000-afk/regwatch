@@ -1060,6 +1060,40 @@ check("осиротевших событий нет",
 _st19.close(); _sh19.rmtree(_b19)
 
 
+# --------------------- указатель отчётов не должен вести в никуда
+section("20. Указатель отчётов соответствует действительности")
+import tempfile as _tf20, shutil as _sh20, json as _j20
+from regwatch.deliver import webpush as _wp20
+
+# 27 сентября на сайте висел список из пяти файлов, один из которых
+# отдавал «страница не найдена», а двух свежих отчётов в нём не было.
+# Локальный прогон записал свой указатель, а срочные прогоны без событий
+# выходят досрочно и указатель не пересобирают — испорченный список
+# переносился в корень сайта прогон за прогоном.
+_b20 = Path(_tf20.mkdtemp())
+(_b20 / "webapp").mkdir(parents=True)
+(_b20 / "reports").mkdir(parents=True)
+for _n20 in ("2026-09-26_0946_daily.html", "2026-09-27_0946_daily.html"):
+    (_b20 / "webapp" / _n20).write_text("<html>отчёт</html>", encoding="utf-8")
+# Указатель, доставшийся от чужого прогона: ссылается на то, чего нет
+(_b20 / "webapp" / "latest.json").write_text(_j20.dumps(
+    {"reports": [{"file": "2026-09-27_0355_daily.html", "title": "Призрак", "summary": ""}]},
+    ensure_ascii=False), encoding="utf-8")
+
+_wp20.export_reports(_b20, _b20 / "reports")
+_idx20 = _j20.loads((_b20 / "webapp" / "latest.json").read_text(encoding="utf-8"))["reports"]
+_files20 = {r["file"] for r in _idx20}
+
+check("несуществующий файл из указателя убран",
+      "2026-09-27_0355_daily.html" not in _files20, str(_files20))
+check("настоящие отчёты в указателе есть", len(_files20) == 2, str(_files20))
+check("каждая ссылка указывает на существующий файл",
+      all((_b20 / "webapp" / r["file"]).exists() for r in _idx20))
+check("самый свежий первым",
+      _idx20[0]["file"] == "2026-09-27_0946_daily.html", _idx20[0]["file"])
+_sh20.rmtree(_b20)
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""
