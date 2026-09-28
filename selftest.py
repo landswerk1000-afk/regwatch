@@ -1094,6 +1094,110 @@ check("самый свежий первым",
 _sh20.rmtree(_b20)
 
 
+# ------------------- шлюз Yandex отбивает часть запросов, это не смерть
+section("21. Придушенный шлюзом ретранслятор не хоронится")
+import http.server as _hs21, socketserver as _ss21
+from regwatch.http import Http as _H21
+
+# 28 сентября шлюз Yandex Cloud ответил nginx-403 на часть частых запросов:
+# заголовок Server: Yandex-Cloud-Functions/1.0, HTML-страница вместо нашего
+# текста. Функция при этом жива. Уйти на резерв по такому отказу — променять
+# рабочий путь на бесплатный прокси, который, скорее всего, мёртв.
+_st21 = {"deny": 0, "always": False}
+_hits21 = {"n": 0, "t": []}
+
+
+class _Gate21(_hs21.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        _hits21["n"] += 1
+        _hits21["t"].append(time.monotonic())
+        if _st21["always"] or _st21["deny"] > 0:
+            if not _st21["always"]:
+                _st21["deny"] -= 1
+            self.send_response(403)
+            self.send_header("Server", "Yandex-Cloud-Functions/1.0")
+            self.end_headers(); self.wfile.write(b"<html>403</html>"); return
+        _b = b"<h1>ok</h1>"
+        self.send_response(200)
+        self.send_header("X-Relay-Final-Url", "https://sozd.duma.gov.ru/oz")
+        self.send_header("Content-Length", str(len(_b)))
+        self.end_headers(); self.wfile.write(_b)
+
+
+class _Spare21(_hs21.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def do_GET(self):
+        _b = b"<h1>zapas</h1>"
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(_b)))
+        self.end_headers(); self.wfile.write(_b)
+
+
+_g21 = _ss21.TCPServer(("127.0.0.1", 0), _Gate21)
+_s21 = _ss21.TCPServer(("127.0.0.1", 0), _Spare21)
+threading.Thread(target=_g21.serve_forever, daemon=True).start()
+threading.Thread(target=_s21.serve_forever, daemon=True).start()
+time.sleep(0.3)
+_GATE21 = f"http://127.0.0.1:{_g21.server_address[1]}/"
+_SPARE21 = f"http://127.0.0.1:{_s21.server_address[1]}/"
+
+
+class _SpOpen21:
+    def open(self, req, timeout=None):
+        import urllib.request as _u
+        return _u.urlopen(_SPARE21, timeout=timeout)
+
+
+def _mk21(retries=6):
+    h = _H21(relay_url=_GATE21, relay_token="tok",
+             proxy_hosts=["sozd.duma.gov.ru"], retries=retries, timeout=10)
+    h.fallback_proxies = ["socks5h://127.0.0.1:1"]
+    h._make_fallback = lambda u: _SpOpen21()
+    h.RELAY_MIN_INTERVAL = 0.3
+    return h
+
+
+_U21 = "https://sozd.duma.gov.ru/oz"
+
+_st21.update(deny=1, always=False)
+_h21 = _mk21()
+check("разовый 403 пережит",
+      "ok" in _h21.get(_U21).text and _h21.relay_down_reason is None)
+
+_st21.update(deny=2)
+_h21 = _mk21()
+check("два отказа подряд пережиты",
+      "ok" in _h21.get(_U21).text and _h21.relay_down_reason is None)
+
+_st21.update(deny=1)
+_h21 = _mk21(); _h21.get(_U21)
+check("удачный ответ обнуляет счётчик", _h21._relay_fails == 0)
+
+# Но если функция действительно легла, резерв нужен.
+_st21.update(deny=0, always=True)
+_h21 = _mk21(retries=8)
+check("три отказа подряд — уходим на резерв", "zapas" in _h21.get(_U21).text)
+check("причина падения записана", _h21.relay_down_reason is not None)
+
+_st21.update(always=False, deny=0)
+_hits21.update(n=0, t=[])
+_h21 = _mk21()
+for _ in range(3):
+    _h21.get(_U21)
+_gaps21 = [_hits21["t"][i + 1] - _hits21["t"][i] for i in range(len(_hits21["t"]) - 1)]
+# Обычная выдержка считается по адресу назначения, но через ретранслятор
+# все запросы идут в один адрес функции — именно это шлюз считает наплывом.
+check("между обращениями к функции выдержана пауза",
+      all(x >= 0.25 for x in _gaps21), str([round(x, 2) for x in _gaps21]))
+check("через функцию попыток больше обычного", _H21.RELAY_RETRIES >= 5)
+_g21.shutdown(); _s21.shutdown()
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""

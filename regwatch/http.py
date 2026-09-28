@@ -128,6 +128,11 @@ class Http:
         # тогда, когда понадобились, и запоминаем сработавший до конца прогона.
         self.fallback_proxies = [str(x).strip() for x in (fallback_proxies or []) if str(x).strip()]
         self.relay_down_reason: str | None = None
+        # Шлюз Yandex Cloud отбивает часть частых запросов своим nginx-403.
+        # Считать такой отказ смертью функции нельзя: она жива, просто
+        # придушена. Хороним её только после нескольких подряд.
+        self._relay_fails = 0
+        self._relay_last_hit = 0.0
         self._fallback_opener = None
         self._fallback_url: str | None = None
         if self.relay_token:
@@ -251,17 +256,42 @@ class Http:
                 time.sleep(wait)
         self._last_hit[host] = time.monotonic()
 
-    def _relay_failed(self, reason: str) -> None:
-        """Отмечает ретранслятор нерабочим до конца прогона.
+    RELAY_MIN_INTERVAL = 1.5
+    RELAY_RETRIES = 6
+    RELAY_DEATH_AFTER = 3
 
-        Один раз, а не при каждом запросе: пробовать мёртвый путь для каждого
-        из десятка источников — минуты впустую на каждом прогоне.
+    def _relay_failed(self, reason: str) -> bool:
+        """Считает отказ ретранслятора. Возвращает True, если пора на резерв.
+
+        Один отказ ничего не значит: шлюз Yandex Cloud отбивает часть частых
+        запросов собственным nginx-403, а функция при этом жива. Уйти на
+        резерв по первому такому отказу — променять рабочий путь на мёртвый
+        бесплатный прокси. Хороним после трёх подряд.
         """
         if self.relay_down_reason:
-            return
+            return True
+        self._relay_fails += 1
+        if self.log:
+            self.log.warning("ретранслятор: отказ %d из %d (%s)",
+                             self._relay_fails, self.RELAY_DEATH_AFTER, reason)
+        if self._relay_fails < self.RELAY_DEATH_AFTER:
+            return False
         self.relay_down_reason = reason
         if self.log:
             self.log.warning("ретранслятор недоступен (%s) — перехожу на резерв", reason)
+        return True
+
+    def _relay_throttle(self) -> None:
+        """Пауза между обращениями К ФУНКЦИИ, а не к госсайту.
+
+        Обычная выдержка считается по адресу назначения, но через
+        ретранслятор все запросы идут в один и тот же адрес функции —
+        и именно это шлюз воспринимает как наплыв.
+        """
+        wait = self.RELAY_MIN_INTERVAL - (time.monotonic() - self._relay_last_hit)
+        if wait > 0:
+            time.sleep(wait)
+        self._relay_last_hit = time.monotonic()
 
     def _retry_without_relay(self, url, headers, timeout, retries, allow_status):
         """Повторяет запрос в обход ретранслятора."""
@@ -305,6 +335,11 @@ class Http:
         # осел бы в журналах Яндекса и в истории обращений.
         request_url = url
         via_relay = self.uses_relay(url)
+        if via_relay:
+            # Через функцию попыток нужно больше: шлюз Yandex Cloud отбивает
+            # часть запросов своим 403, и страница, потерянная на трёх
+            # попытках, вернётся только следующим прогоном — а это три часа.
+            retries = max(retries, self.RELAY_RETRIES)
         # Ретранслятор уже признан мёртвым в этом прогоне, а адрес — из тех,
         # что без него недоступны. Идти напрямую бессмысленно: госсайт
         # оборвёт рукопожатие TLS и запрос повиснет до таймаута. Сразу берём
@@ -322,6 +357,8 @@ class Http:
         last_err = None
         for attempt in range(1, retries + 1):
             self._throttle(url)
+            if via_relay:
+                self._relay_throttle()
             started = time.monotonic()
             try:
                 req = urllib.request.Request(request_url, headers=hdrs, method="GET")
@@ -340,6 +377,8 @@ class Http:
                     if allow_status and r.status not in allow_status:
                         raise FetchError(url, f"HTTP {r.status}", r.status)
                     self._ok_count += 1
+                    if via_relay:
+                        self._relay_fails = 0
                     return r
             except urllib.error.HTTPError as e:
                 last_err = FetchError(url, f"HTTP {e.code}", e.code)
@@ -348,9 +387,15 @@ class Http:
                 # заголовку: успешно ретранслированный ответ его несёт,
                 # собственная ошибка функции — нет.
                 if via_relay and not e.headers.get("X-Relay-Final-Url"):
-                    self._relay_failed(f"функция ответила HTTP {e.code}")
-                    return self._retry_without_relay(url, headers, timeout,
-                                                     retries, allow_status)
+                    dead = self._relay_failed(f"функция ответила HTTP {e.code}")
+                    if dead:
+                        return self._retry_without_relay(url, headers, timeout,
+                                                         retries, allow_status)
+                    # Функция, скорее всего, жива — её придушил шлюз.
+                    # Ждём дольше обычного и пробуем снова.
+                    if attempt < retries:
+                        time.sleep(min(3 * attempt + random.random() * 2, 15))
+                    continue
                 if e.code in (400, 401, 403, 404, 410):
                     break
             except (urllib.error.URLError, socket.timeout, ssl.SSLError,
@@ -358,9 +403,9 @@ class Http:
                 # До функции не достучались вовсе — её удалили, облако лежит
                 # или пропала сеть. Госсайт тут ни при чём.
                 if via_relay and attempt >= retries:
-                    self._relay_failed(f"{type(e).__name__}: {getattr(e, 'reason', e)}")
-                    return self._retry_without_relay(url, headers, timeout,
-                                                     retries, allow_status)
+                    if self._relay_failed(f"{type(e).__name__}: {getattr(e, 'reason', e)}"):
+                        return self._retry_without_relay(url, headers, timeout,
+                                                         retries, allow_status)
                 reason = getattr(e, "reason", e)
                 last_err = FetchError(url, f"{type(e).__name__}: {reason}")
             except Exception as e:
