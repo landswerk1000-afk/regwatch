@@ -338,6 +338,34 @@ class Store:
         return {"before": before, "after": after, "noise": noise,
                 "old": old, "over_cap": over}
 
+    def activity(self, days: int = 14, floor: float = 0.45) -> list:
+        """Сколько значимых документов появлялось в каждый из последних дней.
+
+        Отчёт отвечает «сколько сегодня», но не отвечает «много это или мало».
+        Четырнадцать дней рядом дают руководителю то, чего в цифрах нет:
+        спокойная неделя или всплеск.
+        """
+        rows = self.db.execute(
+            """SELECT date(i.first_seen) d, COUNT(*) n
+               FROM items i JOIN scores s ON s.item_id = i.id
+               WHERE s.relevance >= ? AND i.first_seen >= date('now', ?)
+               GROUP BY d""",
+            (floor, f"-{days - 1} days")).fetchall()
+        have = {r["d"]: r["n"] for r in rows}
+
+        from datetime import timedelta
+        today = now_utc().date()
+        out = []
+        for i in range(days - 1, -1, -1):
+            d = today - timedelta(days=i)
+            out.append({"date": d.isoformat(),
+                        "label": f"{d.day:02d}.{d.month:02d}",
+                        "n": have.get(d.isoformat(), 0),
+                        # Выходные помечаем: пустой столбик в субботу — норма,
+                        # а не признак поломки.
+                        "weekend": d.weekday() >= 5})
+        return out
+
     def start_run(self) -> int:
         return self.db.execute("INSERT INTO runs (started_at) VALUES (?)",
                                (iso(now_utc()),)).lastrowid

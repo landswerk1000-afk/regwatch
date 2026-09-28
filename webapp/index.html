@@ -67,7 +67,11 @@
     font-weight:600;cursor:pointer;background:var(--accent);color:var(--on-accent);
     width:100%;font-family:inherit;letter-spacing:.2px;
   }
+  button{transition:filter .15s ease, border-color .15s ease,
+          background-color .15s ease}
   button:hover{filter:brightness(1.05)}
+  button:active{transform:translateY(1px)}
+  a{transition:color .15s ease}
   button:disabled{opacity:.4;cursor:default}
   button.ghost{background:transparent;color:var(--accent-ink);border:1px solid var(--line)}
   .state{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:600;margin-bottom:10px}
@@ -88,8 +92,26 @@
   footer{margin-top:26px;padding-top:15px;border-top:2px solid var(--accent);
          font-size:11px;color:var(--faint);line-height:1.7;text-align:center}
   a{color:var(--accent-ink)}
+  /* Скелет вместо слова «Загружаю»: страница сразу принимает ту форму,
+     которую примет с данными, и содержимое не прыгает при появлении. */
+  .sk{padding:13px 0;border-top:1px solid var(--line-soft)}
+  .sk:first-child{border-top:0}
+  .sk span{display:block;height:11px;border-radius:2px;
+           background:linear-gradient(90deg,var(--surface) 25%,
+                      var(--line-soft) 37%,var(--surface) 63%);
+           background-size:400% 100%;animation:sk 1.4s ease infinite}
+  .sk span:first-child{width:62%}
+  .sk span:last-child{width:38%;height:9px;margin-top:7px;opacity:.7}
+  @keyframes sk{0%{background-position:100% 0}100%{background-position:0 0}}
+  /* Кто отключил анимацию в системе, не должен её видеть. */
+  @media (prefers-reduced-motion: reduce){
+    .sk span{animation:none}
+    *{transition:none !important}
+  }
   .rep{display:block;padding:13px 0;border-top:1px solid var(--line-soft);
-       text-decoration:none;color:var(--ink);font-size:14px}
+       text-decoration:none;color:var(--ink);font-size:14px;
+       transition:background-color .15s ease, padding-left .15s ease}
+  .rep:hover{background:var(--accent-soft);padding-left:8px}
   .rep:first-of-type{border-top:0}
   .rep:hover b{color:var(--accent-ink)}
   .rep small{display:block;color:var(--faint);font-size:12px;margin-top:3px}
@@ -136,7 +158,12 @@
 
   <div class="card" id="reportCard">
     <h2>Отчёты</h2>
-    <div id="reportList"><p id="reportEmpty">Загружаю…</p></div>
+    <div id="reportList" aria-busy="true">
+      <div class="sk"><span></span><span></span></div>
+      <div class="sk"><span></span><span></span></div>
+      <div class="sk"><span></span><span></span></div>
+    </div>
+    <p id="reportEmpty" class="hidden"></p>
   </div>
 
   <footer>
@@ -282,6 +309,7 @@
     var items = (d && d.reports) || [];
     if (!items.length) throw new Error('пусто');
     list.innerHTML = '';
+    list.removeAttribute('aria-busy');
     items.slice(0, 10).forEach(function (rep) {
       var a = document.createElement('a');
       a.className = 'rep';
@@ -292,8 +320,12 @@
       list.appendChild(a);
     });
   }).catch(function () {
-    $('reportEmpty').textContent =
-      'Отчётов пока нет. Они появятся здесь после первой выгрузки.';
+    var list = $('reportList');
+    list.innerHTML = '';
+    list.removeAttribute('aria-busy');
+    var empty = $('reportEmpty');
+    empty.textContent = 'Отчётов пока нет. Они появятся здесь после первой выгрузки.';
+    empty.classList.remove('hidden');
   });
 })();
 </script>

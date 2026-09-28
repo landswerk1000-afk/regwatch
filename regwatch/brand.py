@@ -85,6 +85,18 @@ FONT_URL = ("https://fonts.googleapis.com/css2?"
 FONT_STACK = ("'Inter','Inter var',-apple-system,BlinkMacSystemFont,"
               "'SF Pro Text','Segoe UI',Roboto,Helvetica,Arial,sans-serif")
 
+# Ступени размеров. Семь вместо шестнадцати: документ собраннее, а разница
+# между соседними ступенями заметна глазу — иначе шкала не работает.
+FONT_SCALE = {
+    "xs": "10px",     # надписи прописными, подписи под цифрами
+    "sm": "11.5px",   # служебные строки, даты
+    "md": "13px",     # основной текст
+    "lg": "15px",     # вердикт, важные строки
+    "xl": "17px",     # заголовки документов
+    "h2": "22px",     # заголовок на узком экране
+    "h1": "30px",     # заголовок и цифры сводки
+}
+
 # Цифры в таблицах и сводках должны стоять столбиком — иначе взгляд
 # спотыкается при сравнении чисел разной ширины.
 FONT_NUMERIC = "font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;"

@@ -225,27 +225,36 @@ STYLE = f"""
     border-bottom:none;padding:34px 36px 26px;}}
   .eyebrow{{font-size:10px;font-weight:600;letter-spacing:2.4px;
     text-transform:uppercase;color:{C['accent_ink']};margin-bottom:14px;}}
-  .head h1{{margin:0 0 6px;font-size:29px;line-height:1.16;font-weight:700;
+  .head h1{{margin:0 0 6px;font-size:30px;line-height:1.16;font-weight:700;
     color:{C['ink']};letter-spacing:-0.6px;}}
   .head .org{{font-size:13px;color:{C['ink_65']};margin-bottom:16px;}}
-  .head .meta{{font-size:12px;color:{C['ink_45']};padding-top:14px;
+  .head .meta{{font-size:11.5px;color:{C['ink_45']};padding-top:14px;
     border-top:1px solid {C['line_soft']};{B.FONT_NUMERIC}}}
   .rule{{height:3px;background:{C['accent']};}}
 
   /* ---------- сводка ---------- */
   .panel{{background:{C['white']};border:1px solid {C['line']};border-top:none;}}
-  .verdict{{padding:22px 36px;font-size:16px;line-height:1.5;
+  .verdict{{padding:22px 36px;font-size:17px;line-height:1.5;
     color:{C['ink']};font-weight:500;border-bottom:1px solid {C['line_soft']};}}
   .figures{{display:flex;}}
   .fig{{flex:1;padding:20px 10px 22px;text-align:center;
     border-left:1px solid {C['line_soft']};}}
   .fig:first-child{{border-left:none;}}
-  .fig .v{{font-size:32px;font-weight:700;line-height:1;letter-spacing:-1.2px;}}
-  .fig .l{{font-size:9.5px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;
+  .fig .v{{font-size:30px;font-weight:700;line-height:1;letter-spacing:-1.2px;}}
+  .fig .l{{font-size:10px;font-weight:600;letter-spacing:1.3px;text-transform:uppercase;
     color:{C['ink_45']};margin-top:9px;}}
   .fig.zero{{opacity:.3;}}
+  .act{{padding:16px 36px 14px;border-top:1px solid {C['line_soft']};
+    background:{C['white']};}}
+  .act-h{{display:flex;justify-content:space-between;align-items:baseline;
+    font-size:10px;font-weight:600;letter-spacing:1.4px;text-transform:uppercase;
+    color:{C['ink_45']};margin-bottom:9px;}}
+  .act-peak{{letter-spacing:0;text-transform:none;font-weight:400;}}
+  .act svg{{display:block;width:100%;height:42px;}}
+  .act-x{{display:flex;justify-content:space-between;font-size:10px;
+    color:{C['ink_45']};margin-top:5px;{B.FONT_NUMERIC}}}
   .orgs{{padding:13px 36px;border-top:1px solid {C['line_soft']};
-    background:{C['surface']};font-size:12.5px;color:{C['ink_65']};
+    background:{C['surface']};font-size:13px;color:{C['ink_65']};
     display:flex;flex-wrap:wrap;gap:8px;align-items:center;}}
   .orgs .lbl{{font-size:10px;font-weight:600;letter-spacing:1.4px;
     text-transform:uppercase;color:{C['ink_45']};margin-right:4px;}}
@@ -261,13 +270,13 @@ STYLE = f"""
     border-color:{C['accent']};color:{C['ink']};}}
   .org-btn[aria-pressed="true"] .n{{color:{C['accent_ink']};}}
   .card[hidden], .sec[hidden]{{display:none!important;}}
-  .nothing{{padding:24px 36px;font-size:14px;color:{C['ink_65']};
+  .nothing{{padding:24px 36px;font-size:15px;color:{C['ink_65']};
     background:{C['white']};border:1px solid {C['line']};border-top:none;}}
 
   /* ---------- сроки ---------- */
   .dl{{margin:28px 0 0;background:{C['white']};border:1px solid {C['line']};
     border-top:3px solid {C['accent']};}}
-  .dl h2{{margin:0;padding:15px 24px;font-size:10.5px;font-weight:700;
+  .dl h2{{display:flex;align-items:center;margin:0;padding:15px 24px;font-size:10px;font-weight:700;
     letter-spacing:1.8px;text-transform:uppercase;color:{C['ink']};
     border-bottom:1px solid {C['line_soft']};}}
   .dl .row{{display:flex;gap:18px;padding:13px 24px;
@@ -278,56 +287,58 @@ STYLE = f"""
   .dl .when span{{display:block;font-weight:400;font-size:11.5px;
     color:{C['ink_45']};margin-top:2px;}}
   .dl .soon span{{color:{U['critical']['color']};font-weight:600;}}
-  .dl .what{{font-size:13.5px;color:{C['ink']};}}
-  .dl .contact{{font-size:12px;color:{C['ink_45']};margin-top:3px;}}
+  .dl .what{{font-size:13px;color:{C['ink']};}}
+  .dl .contact{{font-size:11.5px;color:{C['ink_45']};margin-top:3px;}}
 
   /* ---------- разделы ---------- */
   .sec{{display:flex;align-items:baseline;gap:12px;margin:36px 0 14px;
     padding-bottom:9px;border-bottom:1px solid {C['line']};}}
-  .sec .t{{font-size:10.5px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;}}
-  .sec .n{{font-size:11px;font-weight:700;{B.FONT_NUMERIC}}}
+  .ic{{vertical-align:-2px;margin-right:6px;flex:none;}}
+  .sec .t{{display:inline-flex;align-items:center;
+    font-size:10px;font-weight:700;letter-spacing:1.8px;text-transform:uppercase;}}
+  .sec .n{{font-size:11.5px;font-weight:700;{B.FONT_NUMERIC}}}
   .sec .line{{flex:1;}}
 
   /* ---------- карточка ---------- */
   .card{{background:{C['white']};border:1px solid {C['line']};border-left:2px solid;
     padding:20px 24px;margin-bottom:10px;}}
-  .card .top{{font-size:10.5px;margin-bottom:10px;display:flex;flex-wrap:wrap;
+  .card .top{{font-size:10px;margin-bottom:10px;display:flex;flex-wrap:wrap;
     align-items:center;gap:9px;}}
   .card .org{{font-weight:700;letter-spacing:.9px;text-transform:uppercase;}}
   .card .dot{{color:{C['line']};}}
   .card .when{{color:{C['ink_45']};{B.FONT_NUMERIC}}}
   .card .ev{{color:{C['ink_45']};}}
-  .card h3{{margin:0 0 11px;font-size:16px;line-height:1.4;font-weight:600;
+  .card h3{{margin:0 0 11px;font-size:17px;line-height:1.4;font-weight:600;
     color:{C['ink']};letter-spacing:-0.1px;}}
-  .card .stage{{display:inline-block;font-size:12.5px;color:{C['ink']};
+  .card .stage{{display:inline-block;font-size:13px;color:{C['ink']};
     background:{C['surface']};border-left:2px solid {C['accent']};
     padding:6px 12px;margin-bottom:11px;}}
   .card .stage.wide{{display:block;}}
-  .card .code{{display:inline-block;font-size:10.5px;font-weight:700;
+  .card .code{{display:inline-block;font-size:10px;font-weight:700;
     color:{C['accent_ink']};margin-right:9px;{B.FONT_NUMERIC}}}
-  .card .sum{{font-size:13.5px;line-height:1.6;color:{C['ink_65']};}}
+  .card .sum{{font-size:13px;line-height:1.6;color:{C['ink_65']};}}
   /* Плашки склеены без пробелов, и браузеру негде перенести строку: ряд
      тем в 493 пикселя раздувал карточку, а за ней и всю страницу до 541
      при экране 375. Flex переносит сам, не полагаясь на пробелы в разметке. */
-  .card .chips{{margin-top:13px;font-size:10.5px;color:{C['accent_ink']};
+  .card .chips{{margin-top:13px;font-size:10px;color:{C['accent_ink']};
     display:flex;flex-wrap:wrap;gap:4px 14px;}}
   .card .chip{{white-space:nowrap;}}
   .card .note{{margin-top:13px;padding:10px 14px;background:{C['accent_soft']};
-    border-left:2px solid {C['accent']};font-size:12.5px;color:{C['ink']};font-weight:500;}}
-  .card .src{{margin-top:14px;font-size:12.5px;font-weight:600;}}
+    border-left:2px solid {C['accent']};font-size:13px;color:{C['ink']};font-weight:500;}}
+  .card .src{{margin-top:14px;font-size:13px;font-weight:600;}}
 
   /* ---------- подвал ---------- */
   .foot{{margin-top:36px;padding-top:18px;border-top:2px solid {C['accent']};
-    font-size:11px;line-height:1.75;color:{C['ink_45']};}}
+    font-size:11.5px;line-height:1.75;color:{C['ink_45']};}}
   .foot b{{color:{C['ink']};font-weight:600;}}
   .empty{{background:{C['white']};border:1px solid {C['line']};border-top:none;
-    padding:38px;text-align:center;font-size:14.5px;color:{C['ink_65']};}}
+    padding:38px;text-align:center;font-size:15px;color:{C['ink_65']};}}
 
   /* ---------- узкий экран ---------- */
   @media (max-width: 560px){{
     .sheet{{padding:20px 14px 36px;}}
     .head{{padding:24px 18px 20px;}}
-    .head h1{{font-size:24px;}}
+    .head h1{{font-size:22px;}}
     .verdict{{padding:18px;font-size:15px;}}
     /* Четыре колонки цифр на 375 пикселях ужимаются так, что подписи
        переносятся по слогам. Две на две читаются. */
@@ -336,6 +347,7 @@ STYLE = f"""
     .fig:nth-child(odd){{border-right:1px solid {C['line_soft']};}}
     .fig:nth-child(-n+2){{border-top:none;}}
     .orgs{{padding:12px 18px;}}
+    .act{{padding:14px 18px 12px;}}
     .dl h2, .dl .row{{padding-left:18px;padding-right:18px;}}
     /* Дата и заголовок в одну строку не помещаются: колонка в 104 пикселя
        оставляет заголовку меньше половины ширины. */
@@ -365,6 +377,81 @@ STYLE = f"""
   }}
 """
 
+
+# Значки — только там, где они ускоряют просмотр: у заголовков разделов
+# и у сроков. Контурные, в цвет текста, без заливок: документу нужна
+# сдержанность, а не иллюстрации. Рисуются в разметке, поэтому одинаково
+# работают в браузере, в печати и без сети.
+_ICONS = {
+    # восклицание в круге — требует решения
+    "critical": '<circle cx="8" cy="8" r="6.4"/><path d="M8 5v3.6"/><path d="M8 11.1v.1"/>',
+    # флажок — важное
+    "high": '<path d="M4 13.5V3"/><path d="M4 3.6h8l-1.9 3 1.9 3H4"/>',
+    # круг с чертой — к сведению
+    "normal": '<circle cx="8" cy="8" r="6.4"/><path d="M8 7.2v3.9"/><path d="M8 4.9v.1"/>',
+    # точка — прочее
+    "low": '<circle cx="8" cy="8" r="2.6"/>',
+    # часы — сроки подачи замечаний
+    "clock": '<circle cx="8" cy="8" r="6.4"/><path d="M8 4.4V8l2.6 1.7"/>',
+}
+
+
+def _icon(name: str, size: int = 13) -> str:
+    body = _ICONS.get(name)
+    if not body:
+        return ""
+    return (f'<svg class="ic" width="{size}" height="{size}" viewBox="0 0 16 16" '
+            f'fill="none" stroke="currentColor" stroke-width="1.5" '
+            f'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            f'{body}</svg>')
+
+def _activity_strip(activity) -> str:
+    """Полоса активности за две недели — встроенный SVG.
+
+    Не украшение: отчёт отвечает «сколько сегодня», но не отвечает «много это
+    или мало». Четырнадцать дней рядом дают руководителю недостающий контекст.
+
+    SVG, а не скрипт: отчёт должен одинаково выглядеть на сайте, в почте
+    и на бумаге, а скрипты в печать не попадают.
+    """
+    if not activity:
+        return ""
+    peak = max((d["n"] for d in activity), default=0)
+    # Корневая шкала вместо прямой. Один всплеск — 74 документа в день
+    # заполнения базы против семи в обычный — прижимал все прочие дни
+    # к нулю, и полоса переставала что-либо показывать. Корень сохраняет
+    # и пик, и различимость будней; точное число пика подписано рядом.
+    from math import sqrt
+    top_v = sqrt(peak) if peak else 0
+    W, H = 100.0, 30.0          # координаты в процентах ширины
+    gap, n = 0.9, len(activity)
+    bw = (W - gap * (n - 1)) / n
+    floor_y, top = H - 5.0, 3.0
+
+    bars = []
+    for i, d in enumerate(activity):
+        x = i * (bw + gap)
+        h = 0.0 if not top_v else (sqrt(d["n"]) / top_v) * (floor_y - top)
+        # Нулевой день рисуем ниткой, а не пустотой: иначе не видно,
+        # что день учтён, и полоса выглядит оборванной.
+        h = max(h, 0.7)
+        y = floor_y - h
+        last = i == n - 1
+        fill = C["ink"] if last else (C["accent_edge"] if d["weekend"] else C["accent"])
+        bars.append(f'<rect x="{x:.2f}" y="{y:.2f}" width="{bw:.2f}" height="{h:.2f}" '
+                    f'fill="{fill}" rx="0.3"><title>{_esc(d["label"])}: '
+                    f'{d["n"]}</title></rect>')
+
+    ends = (f'<span>{_esc(activity[0]["label"])}</span>'
+            f'<span>сегодня — {activity[-1]["n"]}</span>')
+    return (f'<div class="act"><div class="act-h">Динамика за две недели'
+            f'<span class="act-peak">пик {peak}</span></div>'
+            f'<svg viewBox="0 0 {W:.0f} {H:.0f}" preserveAspectRatio="none" '
+            f'role="img" aria-label="Документы по дням за две недели">'
+            f'{"".join(bars)}'
+            f'<line x1="0" y1="{floor_y:.2f}" x2="{W:.0f}" y2="{floor_y:.2f}" '
+            f'stroke="{C["line"]}" stroke-width="0.25"/></svg>'
+            f'<div class="act-x">{ends}</div></div>')
 
 def _figure(value: int, label: str, color: str) -> str:
     cls = "fig zero" if not value else "fig"
@@ -421,7 +508,8 @@ def _card(entry, u: str) -> str:
     return "".join(P)
 
 
-def render_html(buckets, rows, health, period_label: str, dls) -> str:
+def render_html(buckets, rows, health, period_label: str, dls,
+                activity=None) -> str:
     c = _counts(buckets)
     total = sum(c.values())
 
@@ -468,11 +556,15 @@ def render_html(buckets, rows, health, period_label: str, dls) -> str:
                      + "".join(btns) + "</div>")
             P.append('<div class="nothing" id="nothing" hidden>'
                      'По выбранному органу документов в этом отчёте нет.</div>')
+    # Полоса — вне условия «есть документы»: в спокойный день контекст
+    # нужен даже сильнее, иначе пустой отчёт неотличим от поломки.
+    P.append(_activity_strip(activity))
     P.append("</div>")
 
     # ---------- сроки: единственное с жёстким дедлайном ----------
     if dls:
-        P.append('<div class="dl"><h2>Сроки подачи замечаний</h2>')
+        P.append(f'<div class="dl"><h2>{_icon("clock")}'
+                     f'Сроки подачи замечаний</h2>')
         for dt, r, meta in dls:
             days = (dt.date() - now_msk().date()).days
             when = "сегодня" if days == 0 else (
@@ -495,7 +587,7 @@ def render_html(buckets, rows, health, period_label: str, dls) -> str:
         m = U[u]
         P.append(f'<div class="sec" data-sec="{u}">'
                  f'<span class="t" style="color:{m["color"]};">'
-                 f'{_esc(m["label"])}</span>'
+                 f'{_icon(u)}{_esc(m["label"])}</span>'
                  f'<span class="n num" style="color:{m["color"]};">'
                  f'{len(entries)}</span><span class="line"></span></div>')
         for e in entries:

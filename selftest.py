@@ -237,7 +237,7 @@ cfg = Config.load(Path(__file__).parent / "config.json")
 check("пути конфига абсолютны", cfg.db_path.is_absolute() and cfg.reports_dir.is_absolute())
 cfg.data["db_path"] = str(Path(_tmpdb) / "t.db")
 a = Agent(cfg)
-buckets, rows, md, html, ev, label, dls, health_rows = a.build()
+buckets, rows, md, html, ev, label, dls, health_rows, act = a.build()
 check("markdown собирается", md.startswith("# Мониторинг") and len(md) > 80)
 check("html валиден", html.startswith("<!doctype html") and html.rstrip().endswith("</html>"))
 check("html без незакрытых тегов body", html.count("<body") == 1 and html.count("</body>") == 1)
@@ -1240,6 +1240,73 @@ check("встреча министра с губернатором не отсе
       _score22("Министр финансов провёл рабочую встречу с губернатором "
                "по программе долгосрочных сбережений",
                authority="Минфин", kind="press") > 0)
+
+
+# ------------------------------------------- оформление: шкала, полоса, значки
+section("23. Оформление собрано в систему")
+from regwatch import brand as _B23
+from regwatch import report as _R23
+import re as _re23
+
+# Шестнадцать размеров шрифта вразнобой — это не система, а накопление.
+_sizes23 = sorted(set(_re23.findall(r"font-size:([0-9.]+)px", _R23.STYLE)), key=float)
+check("размеров шрифта не больше семи", len(_sizes23) <= 7, ", ".join(_sizes23))
+check("все размеры из объявленной шкалы",
+      set(_sizes23) <= {v.replace("px", "") for v in _B23.FONT_SCALE.values()},
+      f"лишние: {set(_sizes23) - {v.replace('px','') for v in _B23.FONT_SCALE.values()}}")
+
+# Полоса активности: отчёт отвечает «сколько сегодня», но не отвечает
+# «много это или мало».
+_act23 = [{"date": f"2026-09-{d:02d}", "label": f"{d:02d}.09", "n": n,
+           "weekend": d % 7 in (0, 6)}
+          for d, n in zip(range(15, 29), [0, 0, 3, 5, 0, 0, 2, 74, 8, 9, 0, 0, 7, 4])]
+_h23 = _R23.render_html({}, [], [], "Проверка", [], _act23)
+check("полоса активности нарисована", "<svg" in _h23 and "Динамика за две недели" in _h23)
+check("полоса — разметка, а не скрипт",
+      _h23.count("<rect") == 14, f"столбиков {_h23.count('<rect')}")
+check("пик подписан числом", "пик 74" in _h23)
+
+# Один всплеск не должен прижимать остальные дни к нулю.
+_hts23 = [float(m) for m in _re23.findall(r'<rect[^>]*height="([0-9.]+)"', _h23)]
+_pairs23 = [(h, d["n"]) for h, d in zip(_hts23, _act23) if d["n"] > 0]
+_big23 = max(h for h, _ in _pairs23)
+_small23 = min(h for h, _ in _pairs23)
+_raw23 = max(n for _, n in _pairs23) / min(n for _, n in _pairs23)
+_vis23 = _big23 / _small23
+# Прямая шкала дала бы отношение 37:1 — мелкие дни выродились бы в нитки.
+# Корневая сжимает до корня из этого, и будни остаются различимы.
+check("корневая шкала сжимает разброс", _vis23 < _raw23 / 2,
+      f"в данных {_raw23:.0f}:1, на полосе {_vis23:.1f}:1")
+
+# Без данных полоса просто не рисуется — пустая рамка хуже её отсутствия.
+check("без данных полосы нет", "Динамика за две недели" not in
+      _R23.render_html({}, [], [], "Проверка", [], None))
+
+# Значки — контурные, в цвет текста: документу нужна сдержанность.
+# Значки живут у заголовков разделов и у сроков — на пустом отчёте
+# их нет по построению, поэтому проверяем на наполненном.
+class _Row23(dict):
+    def __getitem__(self, k):
+        return self.get(k)
+
+
+_r23 = _Row23(id="x", authority="ЦБ", title="Проект указания", summary=None,
+              stage=None, url=None, published_at="2026-09-28T00:00:00+03:00",
+              meta="{}", relevance=0.7, urgency="high", topics="[]",
+              event_type="new", event_id=1)
+_dl23 = [(_now16(), _Row23(title="Проект", url=None), {})]
+_full23 = _R23.render_html(_R23.group([_r23], {"max_items_per_report": 60}),
+                           [_r23], [], "Проверка", _dl23, _act23)
+check("значки нарисованы", _full23.count("<svg") >= 2, f"найдено {_full23.count('<svg')}")
+check("значки контурные", 'fill="none"' in _full23 and "currentColor" in _full23)
+check("значки скрыты от чтения вслух", 'aria-hidden="true"' in _full23)
+
+# Приложение: скелет и уважение к системной настройке движения.
+_app23 = (Path(__file__).resolve().parent / "webapp" / "index.html").read_text(encoding="utf-8")
+check("в приложении есть скелет загрузки", 'class="sk"' in _app23)
+check("состояние загрузки объявлено для чтения вслух", "aria-busy" in _app23)
+check("анимация отключаема системной настройкой",
+      "prefers-reduced-motion" in _app23)
 
 
 # ------------------------------------------------------------------ итог

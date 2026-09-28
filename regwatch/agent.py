@@ -182,12 +182,13 @@ class Agent:
         dls = R.deadlines(self.store.db.execute(
             "SELECT * FROM items WHERE meta LIKE '%comments_until%'").fetchall())
         health = self.store.health_all()
+        act = self.store.activity(14, th["report_min_relevance"])
         label = ("Срочное уведомление" if alert_mode
                  else f"Отчёт за {now_msk():%d.%m.%Y}")
         md = R.render_markdown(buckets, rows, health, label, dls)
-        html = R.render_html(buckets, rows, health, label, dls)
+        html = R.render_html(buckets, rows, health, label, dls, act)
         event_ids = [r["event_id"] for r in rows]
-        return buckets, rows, md, html, event_ids, label, dls, health
+        return buckets, rows, md, html, event_ids, label, dls, health, act
 
     def subject(self, buckets: dict, alert_mode: bool) -> str:
         crit = len(buckets.get("critical") or [])
@@ -219,7 +220,7 @@ class Agent:
             if note:
                 log.info("%s", note)
 
-        buckets, rows, md, html, event_ids, label, dls, health_rows = self.build(alert_mode)
+        buckets, rows, md, html, event_ids, label, dls, health_rows, act = self.build(alert_mode)
         total = sum(len(v) for v in buckets.values())
 
         out = {"stats": stats, "items": total, "label": label,
@@ -250,7 +251,7 @@ class Agent:
         if pdf.configured(self.cfg.root):
             try:
                 res = pdf.build(self.cfg.root, R.to_model(buckets, rows, health_rows,
-                                                          label, dls),
+                                                          label, dls, act),
                                 path.with_suffix(".pdf"))
                 out["pdf"] = res.get("path")
                 log.info("PDF собран (%s, %d байт)", res.get("font"), res.get("bytes", 0))
