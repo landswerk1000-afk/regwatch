@@ -200,6 +200,38 @@ def cmd_stats(cfg: Config, args) -> int:
     return 0
 
 
+def cmd_coverage(cfg: Config, args) -> int:
+    """Полнота и точность: что агент пропускает и что приносит зря."""
+    from . import coverage as cov
+
+    a = Agent(cfg)
+    try:
+        if args.apply:
+            taken, skipped = cov.apply_file(cfg.root, Path(args.apply))
+            print(f"Принято меток: {taken}" +
+                  (f", пропущено незаполненных: {skipped}" if skipped else ""))
+            return 0
+        if args.review:
+            out = Path(args.review)
+            n = cov.review_file(a.store, cfg.root, out)
+            if not n:
+                print("Размечено всё — размечать нечего.")
+                return 0
+            print(f"Выписано {n} документов: {out}")
+            print("Заполните поле «значим» и верните: "
+                  f"regwatch coverage --apply {out}")
+            return 0
+
+        m = cov.measure(a.store, cfg.root, floor=cfg.thresholds["report_min_relevance"])
+        print(cov.render(m))
+        if m["unlabelled"]:
+            print()
+            print("Разметить новое:  regwatch coverage --review новое.json")
+        return 0
+    finally:
+        a.close()
+
+
 def cmd_proxies(cfg: Config, args) -> int:
     """Найти рабочий бесплатный российский прокси — запасной путь к СОЗД."""
     from . import proxypool
@@ -495,6 +527,10 @@ def main(argv=None) -> int:
     sub.add_parser("baseline", help="первичное наполнение базы без рассылки")
     sub.add_parser("rescore", help="пересчитать релевантность после правки topics.json")
     sub.add_parser("stats", help="что накоплено в базе")
+    cv = sub.add_parser("coverage", help="полнота и точность: что пропускается")
+    cv.add_argument("--review", metavar="ФАЙЛ",
+                    help="выписать неразмеченные документы для разметки")
+    cv.add_argument("--apply", metavar="ФАЙЛ", help="принять размеченный файл")
 
     r = sub.add_parser("run", help="полный цикл: сбор, отчёт, отправка")
     r.add_argument("--alert", action="store_true", help="режим срочного уведомления")
@@ -532,6 +568,7 @@ def main(argv=None) -> int:
     return {
         "doctor": cmd_doctor, "collect": cmd_collect, "run": cmd_run,
         "baseline": cmd_baseline, "rescore": cmd_rescore, "stats": cmd_stats,
+        "coverage": cmd_coverage,
         "proxies": cmd_proxies, "test-email": cmd_test_email,
         "publish": cmd_publish,
         "relay-test": cmd_relay_test,

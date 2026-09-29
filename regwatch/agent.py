@@ -88,6 +88,32 @@ class Agent:
         self.store.db.commit()
         return len(rows)
 
+    def apply_topics_changes(self) -> int:
+        """Переоценивает базу, если словарь тем изменился.
+
+        Правка topics.json действовала только на то, что придёт дальше:
+        новые документы оценивались по новому словарю, а накопленные
+        оставались с прежними оценками. Получалось «дыру закрыли», но
+        в указателе и в измерении охвата её видно по-прежнему — и понять,
+        помогла правка или нет, нельзя.
+
+        Переоценка не создаёт событий, поэтому лавины уведомлений
+        после неё не будет: события пишет сбор, а не оценка.
+        """
+        import hashlib
+
+        try:
+            digest = hashlib.sha256(
+                self.cfg.topics_path.read_bytes()).hexdigest()[:16]
+        except OSError:
+            return 0
+        if self.store.get_setting("topics_hash") == digest:
+            return 0
+        n = self.rescore_all()
+        self.store.set_setting("topics_hash", digest)
+        log.info("словарь тем изменился — переоценено документов: %d", n)
+        return n
+
     # ---------- состояние источников ----------
     def notify_health(self, dry_run: bool = False) -> str | None:
         """Сообщает, когда источник замолчал надолго или снова заговорил.
@@ -249,6 +275,14 @@ class Agent:
             if note:
                 log.info("%s", note)
 
+        # До сборки отчёта: иначе правка словаря доедет до указателя только
+        # следующим прогоном, а до отчёта — вообще никогда.
+        try:
+            self.apply_topics_changes()
+        except Exception as e:
+            log.warning("переоценка по новому словарю не удалась: %s: %s",
+                        type(e).__name__, e)
+
         buckets, rows, md, html, event_ids, label, dls, health_rows, act = self.build(alert_mode)
         total = sum(len(v) for v in buckets.values())
 
@@ -399,6 +433,11 @@ class Agent:
                 # они уйти не должны, иначе вызов упадёт на лишнем аргументе.
                 opts = {k: v for k, v in (self.cfg.data.get("prune") or {}).items()
                         if not k.startswith("_")}
+                # Эталонная выборка переживает чистку: по ней меряется полнота,
+                # и половина разметки — документы с нулевой оценкой, то есть
+                # ровно те, которые чистка забирает первыми.
+                from . import coverage as cov
+                opts["keep_ids"] = tuple(cov.load_reference(self.cfg.root)["labels"])
                 pr = self.store.prune(**opts)
                 if pr["before"] != pr["after"]:
                     self.store.db.execute("VACUUM")

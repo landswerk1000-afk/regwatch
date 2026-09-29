@@ -107,6 +107,21 @@ check("морфология: падежи ловятся",
       rel.score(dict(title="о программе долгосрочных сбережений", authority="ГД",
                      kind="draft_law", published_at="2026-09-01")).relevance >= 0.45)
 
+# Измеренные пробелы словаря. Пять законопроектов ГД про «Об инвестиционных
+# фондах» получали ровный ноль: в словаре была только «паев инвестиционн
+# фонд». Проект положения ЦБ про требования к НФО — тоже ноль, слова в
+# словаре не было вовсе. Обе дыры нашлись измерением полноты, и обе легко
+# закрыть обратно, убрав шаблон «как лишний».
+for _t2, _a2, _k2 in [
+    ('О внесении изменений в Федеральный закон "Об инвестиционных фондах"',
+     "ГД", "draft_law"),
+    ("Проект положения Банка России «Об установлении обязательных для "
+     "некредитных финансовых организаций требований к операционной надежности»",
+     "ЦБ", "draft_act"),
+]:
+    _v2 = rel.score(dict(title=_t2, authority=_a2, kind=_k2, published_at="2026-09-20"))
+    check(f"закрытый пробел: {_t2[:46]}", _v2.relevance >= 0.45, f"{_v2.relevance}")
+
 # ------------------------------------------------------------- хранилище
 section("3. Хранилище и дедупликация")
 from regwatch.store import Store
@@ -1667,6 +1682,163 @@ else:
                 _bad27.append(f"{_i27}: нет номера")
         check("на каждой странице PDF виден выпуск и номер", not _bad27, "; ".join(_bad27))
         _sh24.rmtree(_out27.parent, ignore_errors=True)
+
+
+# --------------------------- чем мерить, что агент не пропускает
+section("28. Измерение охвата")
+import json as _js28, tempfile as _tf28, shutil as _sh28
+from regwatch import coverage as _cov28
+from regwatch.store import Store as _St28
+
+# Отчёт показывает то, что агент счёл значимым. Чего не счёл — не показывает
+# нигде, и до эталонной выборки узнать об этом было неоткуда. Инструмент,
+# про который нельзя сказать, что он пропускает, юристу верить не на что.
+_root28 = Path(_tf28.mkdtemp())
+(_root28 / "webapp").mkdir()
+_st28 = _St28(_root28 / "t.db")
+
+
+def _item28(iid, title, rel, kind="draft_act", authority="ЦБ", days=1):
+    _st28.db.execute(
+        "INSERT INTO items (id,source,authority,kind,external_id,url,title,"
+        "published_at,first_seen,last_seen,content_hash) VALUES (?,?,?,?,?,?,?,"
+        "datetime('now', ?),datetime('now'),datetime('now'),?)",
+        (iid, "s", authority, kind, iid, "u", title, f"-{days} days", "h" + iid))
+    _st28.db.execute(
+        "INSERT INTO scores (item_id,relevance,urgency,topics,matched,rationale,scored_at)"
+        " VALUES (?,?,'normal','[]','[]','',datetime('now'))", (iid, rel))
+    _st28.db.commit()
+
+
+_item28("a", "Узнан и значим", 0.80)
+_item28("b", "Пропущен, но значим", 0.00)
+_item28("c", "Узнан, хотя не нужен", 0.70)
+_item28("d", "Не узнан и не нужен", 0.00)
+_item28("e", "По названию не определить", 0.00)
+# Значим, узнаётся по теме, но стар: скидка за возраст увела ниже порога.
+# Это намеренно, и считать это пропуском нельзя.
+_item28("f", "Старая редакция ОНРФР", 0.28, kind="strategy", days=1200)
+
+_cov28.save_reference(_root28, {"labels": {
+    "a": {"значим": "да"}, "b": {"значим": "да"}, "c": {"значим": "нет"},
+    "d": {"значим": "нет"}, "e": {"значим": "?"}, "f": {"значим": "да"},
+}})
+_m28 = _cov28.measure(_st28, _root28, floor=0.45)
+
+check("выборка собрана целиком", _m28["total"] == 6, str(_m28["total"]))
+# Полнота: значимых трое (a, b, f), узнаны двое — a и f (у f скидка
+# за возраст, но по теме он узнан).
+check("полнота считается без возрастной скидки",
+      abs(_m28["recall"] - 2 / 3) < 1e-9, str(_m28["recall"]))
+check("точность считается", abs(_m28["precision"] - 2 / 3) < 1e-9,
+      str(_m28["precision"]))
+check("пропуск назван поимённо",
+      [r["id"] for r in _m28["misses"]] == ["b"],
+      str([r["id"] for r in _m28["misses"]]))
+check("лишнее названо поимённо",
+      [r["id"] for r in _m28["false_hits"]] == ["c"])
+check("возрастная скидка показана отдельно, а не как пропуск",
+      [r["id"] for r in _m28["aged"]] == ["f"],
+      "иначе архивные редакции выглядят дырой в словаре")
+check("«по названию не определить» не влияет на полноту", _m28["unknown"] == 1)
+check("вывод читается человеком",
+      "Полнота" in _cov28.render(_m28) and "Точность" in _cov28.render(_m28))
+
+# Скидка за возраст и словарь отвечают за разное, и разделять их надо честно.
+check("оценка без скидки восстанавливается",
+      abs(_cov28.thematic(0.35, None) - 0.35 / 0.92) < 1e-6,
+      str(_cov28.thematic(0.35, None)))
+check("свежему документу скидка не меняет ничего",
+      _cov28.thematic(0.8, "2026-09-29T00:00:00+03:00") == 0.8)
+
+# Разметка должна пережить выгрузку и возврат, иначе мерить нечем.
+_rev28 = _root28 / "новое.json"
+_item28("g", "Ещё не размечен", 0.5)
+check("неразмеченное выписывается", _cov28.review_file(_st28, _root28, _rev28) == 1)
+_data28 = _js28.loads(_rev28.read_text(encoding="utf-8"))
+_data28["labels"]["g"]["значим"] = "да"
+# Человек правит файл на диске — так же поступает и проверка.
+_rev28.write_text(_js28.dumps(_data28, ensure_ascii=False), encoding="utf-8")
+_taken28, _ = _cov28.apply_file(_root28, _rev28)
+check("разметка возвращается в эталон", _taken28 == 1)
+check("эталон переживает перезапись",
+      _cov28.load_reference(_root28)["labels"]["g"]["значим"] == "да")
+_sh28.rmtree(_root28, ignore_errors=True)
+
+# Половина разметки — документы с нулевой оценкой: ровно те, которые чистка
+# забирает первыми. Стереть их значит стереть доказательство, что фильтр
+# работает, и возможность сравнить «до» и «после».
+_b28 = Path(_tf28.mkdtemp())
+_st28b = _St28(_b28 / "t.db")
+for _i28 in range(6):
+    _id28 = f"x{_i28}"
+    _st28b.db.execute(
+        "INSERT INTO items (id,source,authority,kind,external_id,url,title,"
+        "first_seen,last_seen,content_hash) VALUES (?,?,?,?,?,?,?,"
+        "datetime('now','-90 days'),datetime('now'),?)",
+        (_id28, "s", "СМИ", "news", str(_i28), "u", "шум", "h" + _id28))
+    _st28b.db.execute("INSERT INTO scores (item_id,relevance,urgency,topics,matched,"
+                      "rationale,scored_at) VALUES (?,0,'low','[]','[]','',datetime('now'))",
+                      (_id28,))
+    _st28b.db.execute("INSERT INTO events (item_id,event_type,detected_at,reported,alerted)"
+                      " VALUES (?,'new',datetime('now'),1,1)", (_id28,))
+_st28b.db.commit()
+_st28b.prune(noise_days=14, max_days=180, keep_ids=("x1", "x3"))
+_left28 = sorted(r[0] for r in _st28b.db.execute("SELECT id FROM items"))
+check("чистка не трогает эталонную выборку", _left28 == ["x1", "x3"], str(_left28))
+_st28b.close()
+_sh28.rmtree(_b28, ignore_errors=True)
+
+# Правка словаря должна доезжать до накопленного. Иначе дыру «закрыли»,
+# а в указателе и в измерении она на месте: новые документы считаются
+# по новому словарю, старые остаются с прежними оценками.
+_c28 = Path(_tf28.mkdtemp())
+(_c28 / "webapp").mkdir()
+(_c28 / "reports").mkdir()
+_sh28.copy2(Path(__file__).resolve().parent / "topics.json", _c28 / "topics.json")
+(_c28 / "config.json").write_text(_js28.dumps({
+    "db_path": "t.db", "reports_dir": "reports", "topics_path": "topics.json",
+    "sources": {}, "email": {"enabled": False},
+}, ensure_ascii=False), encoding="utf-8")
+from regwatch.config import Config as _Cfg28
+from regwatch.agent import Agent as _Ag28
+
+_ag28 = _Ag28(_Cfg28.load(_c28 / "config.json"))
+try:
+    _ag28.store.db.execute(
+        "INSERT INTO items (id,source,authority,kind,external_id,url,title,"
+        "published_at,first_seen,last_seen,content_hash) VALUES "
+        "('z','s','ЦБ','draft_act','z','u','Проект указания о тестировании "
+        "неквалифицированных инвесторов',datetime('now'),datetime('now'),"
+        "datetime('now'),'hz')")
+    _ag28.store.set_score("z", 0.0, "low", [], [], "оценено старым словарём")
+    _ag28.store.db.commit()
+
+    check("первый прогон переоценивает базу", _ag28.apply_topics_changes() == 1)
+    _z28 = _ag28.store.db.execute("SELECT relevance FROM scores WHERE item_id='z'").fetchone()[0]
+    check("старая оценка исправлена новым словарём", _z28 >= 0.45, str(_z28))
+    check("без правки словаря переоценки нет", _ag28.apply_topics_changes() == 0,
+          "переоценка на каждом прогоне — лишняя работа и лишний шум в журнале")
+
+    _t28 = (_c28 / "topics.json")
+    _cfg28 = _js28.loads(_t28.read_text(encoding="utf-8"))
+    _cfg28["topics"][0]["patterns"].append("совершенно новый шаблон")
+    _t28.write_text(_js28.dumps(_cfg28, ensure_ascii=False), encoding="utf-8")
+    check("правка словаря вызывает переоценку", _ag28.apply_topics_changes() == 1)
+finally:
+    _ag28.close()
+_sh28.rmtree(_c28, ignore_errors=True)
+
+# Сам эталон в репозитории: без него измерение — пустая команда.
+_ref28 = _cov28.reference_path(Path(__file__).resolve().parent)
+if not _ref28.exists():
+    skip("эталонная разметка на месте", "эталон.json ещё не собран")
+else:
+    _labels28 = _cov28.load_reference(Path(__file__).resolve().parent)["labels"]
+    check("эталонная разметка на месте", len(_labels28) >= 50,
+          f"размечено {len(_labels28)}")
+    check("все метки допустимы",
+          all(v.get("значим") in _cov28.VALID for v in _labels28.values()))
 
 
 # ------------------------------------------------------------------ итог

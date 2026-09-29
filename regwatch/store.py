@@ -62,6 +62,14 @@ CREATE TABLE IF NOT EXISTS runs (
   stats       TEXT DEFAULT '{}'
 );
 
+-- Мелкие отметки агента о самом себе: например, по какому словарю
+-- посчитаны оценки в базе. Отдельная таблица, потому что вешать это
+-- на runs значило бы хранить настройку в журнале.
+CREATE TABLE IF NOT EXISTS settings (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS source_health (
   source      TEXT PRIMARY KEY,
   last_ok     TEXT,
@@ -272,8 +280,18 @@ class Store:
         self.db.execute("UPDATE source_health SET alerted_streak=? WHERE source=?",
                         (streak, source))
 
+    def get_setting(self, key: str) -> str | None:
+        r = self.db.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+        return r[0] if r else None
+
+    def set_setting(self, key: str, value: str) -> None:
+        self.db.execute("INSERT INTO settings (key,value) VALUES (?,?) "
+                        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                        (key, value))
+        self.db.commit()
+
     def prune(self, noise_days: int = 14, max_days: int = 180,
-              cap: int = 8000, noise_below: float = 0.2) -> dict:
+              cap: int = 8000, noise_below: float = 0.2, keep_ids=()) -> dict:
         """Убирает балласт, чтобы база не росла без предела.
 
         База лежит в репозитории и отправляется туда после каждого прогона.
@@ -288,8 +306,15 @@ class Store:
 
         Документы с ненулевой оценкой живут долго: это история, ради которой
         всё и затевалось.
+
+        keep_ids — эталонная выборка для измерения охвата. Её размечали
+        руками, и половина разметки — это как раз документы с нулевой
+        оценкой: «агент его не показал, и правильно». Вычистить их значило бы
+        стереть доказательство того, что фильтр работает, — а заодно и
+        возможность сравнить «до» и «после» следующей правки словаря.
         """
         before = self.db.execute("SELECT COUNT(*) FROM items").fetchone()[0]
+        keep = tuple(dict.fromkeys(keep_ids or ()))
 
         def drop(where: str, params=()) -> int:
             ids = [r[0] for r in self.db.execute(
@@ -309,23 +334,29 @@ class Store:
         # исчезнет, так и не попав к человеку.
         safe = ("AND NOT EXISTS (SELECT 1 FROM events e "
                 "WHERE e.item_id = i.id AND (e.reported = 0 OR e.alerted = 0))")
+        if keep:
+            safe += " AND i.id NOT IN (%s)" % ",".join("?" * len(keep))
 
         noise = drop(
             f"COALESCE(s.relevance, 0) < ? "
             f"AND i.first_seen < datetime('now', ?) {safe}",
-            (noise_below, f"-{noise_days} days"))
-        old = drop(f"i.first_seen < datetime('now', ?) {safe}", (f"-{max_days} days",))
+            (noise_below, f"-{noise_days} days", *keep))
+        old = drop(f"i.first_seen < datetime('now', ?) {safe}",
+                   (f"-{max_days} days", *keep))
 
         # Последняя мера, если поток окажется плотнее расчётного.
         over = 0
         left = self.db.execute("SELECT COUNT(*) FROM items").fetchone()[0]
         if left > cap:
+            skip = (" AND i.id NOT IN (%s)" % ",".join("?" * len(keep))) if keep else ""
             ids = [r[0] for r in self.db.execute(
                 "SELECT i.id FROM items i LEFT JOIN scores s ON s.item_id=i.id "
                 "WHERE COALESCE(s.relevance,0) < ? "
                 "AND NOT EXISTS (SELECT 1 FROM events e WHERE e.item_id=i.id "
                 "                AND (e.reported=0 OR e.alerted=0)) "
-                "ORDER BY i.first_seen LIMIT ?", (noise_below, left - cap))]
+                + skip +
+                " ORDER BY i.first_seen LIMIT ?",
+                (noise_below, *keep, left - cap))]
             if ids:
                 q = ",".join("?" * len(ids))
                 self.db.execute(f"DELETE FROM events WHERE item_id IN ({q})", ids)
