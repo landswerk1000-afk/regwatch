@@ -10,6 +10,7 @@
     --line:#dcdfe3; --line-soft:#e8ebee;
     --accent:#06b6cb; --accent-ink:#197b88; --accent-soft:#e7f8fa; --accent-edge:#a9e4ec;
     --ok:#197b88; --warn:#8a6a2f; --crit:#ab5942; --crit-soft:#fff1ec;
+    --focus:#313132;
     --on-accent:#313132;
   }
   /* Тёмная тема — тот же графит и та же бирюза, перевёрнутые.
@@ -21,6 +22,7 @@
       --line:#33363a; --line-soft:#2a2d31;
       --accent:#06b6cb; --accent-ink:#4fd3e3; --accent-soft:#12343a; --accent-edge:#1e4e57;
       --ok:#4fd3e3; --warn:#d2a655; --crit:#e09076; --crit-soft:#3a231c;
+      --focus:#f0f1f2;
       --on-accent:#17181a;
     }
   }
@@ -113,9 +115,12 @@
              color:var(--accent-ink)}
   a.card:hover .go{text-decoration:underline}
   /* Клавиатура должна видеть, где находится. Без этого пройти страницу
-     табом можно, но непонятно, что выбрано. */
-  a:focus-visible, button:focus-visible, input:focus-visible{
-    outline:2px solid var(--accent);outline-offset:2px}
+     табом можно, но непонятно, что выбрано.
+
+     Кольцо графитовое, не бирюзовое: бирюза на светлом фоне даёт 2,3:1,
+     а указателю фокуса нужно не меньше трёх. На бирюзовой кнопке кольцо
+     тоже читается — отступ в 2px выносит его за кнопку, на фон карточки. */
+  :focus-visible{outline:2px solid var(--focus);outline-offset:2px}
 
   /* Отметка о последнем сборе. Показывается на обеих страницах одинаково:
      вопрос «это сегодняшнее?» задают и списку отчётов, и указателю. */

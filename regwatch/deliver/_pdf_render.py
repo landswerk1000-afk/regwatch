@@ -76,6 +76,7 @@ def build(model, brand, out_path):
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import ParagraphStyle
     from reportlab.lib.units import mm
+    from reportlab.pdfgen.canvas import Canvas
     from reportlab.platypus import (BaseDocTemplate, Frame, KeepTogether, PageTemplate,
                                     Paragraph, Spacer, Table, TableStyle)
 
@@ -335,16 +336,46 @@ def build(model, brand, out_path):
         'первоисточников на момент сбора.', S["foot"]))
 
     # ---------- документ и колонтитул ----------
-    def footer(canvas, doc):
+    # Колонтитул называет и документ, и выпуск: «Мониторинг регулирования»
+    # на четвёртой странице не говорит, за какое это число, а PDF уходит
+    # письмом и живёт дальше своей жизнью — его пересылают и печатают.
+    caption = f"Мониторинг регулирования частных инвестиций · {model['label']}"
+
+    def draw_footer(canvas, page, total):
         canvas.saveState()
         canvas.setFont(REG, 7)
         canvas.setFillColor(ink65)
-        canvas.drawString(M_L, M_B - 9 * mm, "Мониторинг регулирования частных инвестиций")
-        canvas.drawRightString(PAGE_W - M_R, M_B - 9 * mm, f"{doc.page}")
+        canvas.drawString(M_L, M_B - 9 * mm, caption)
+        canvas.drawRightString(PAGE_W - M_R, M_B - 9 * mm,
+                               f"{page} из {total}" if total > 1 else f"{page}")
         canvas.setStrokeColor(line)
         canvas.setLineWidth(0.5)
         canvas.line(M_L, M_B - 6 * mm, PAGE_W - M_R, M_B - 6 * mm)
         canvas.restoreState()
+
+    class Numbered(Canvas):
+        """Сколько всего страниц, известно только после сборки.
+
+        Поэтому страницы копим, а номера дописываем вторым проходом.
+        «Стр. 2 из 5» отличается от «стр. 2» ровно тем, что по ней видно,
+        всё ли дошло, — а отчёт пересылают и печатают.
+        """
+
+        def __init__(self, *a, **kw):
+            Canvas.__init__(self, *a, **kw)
+            self._pages = []
+
+        def showPage(self):
+            self._pages.append(dict(self.__dict__))
+            self._startPage()
+
+        def save(self):
+            total = len(self._pages)
+            for n, state in enumerate(self._pages, 1):
+                self.__dict__.update(state)
+                draw_footer(self, n, total)
+                Canvas.showPage(self)
+            Canvas.save(self)
 
     doc = BaseDocTemplate(out_path, pagesize=A4,
                           leftMargin=M_L, rightMargin=M_R,
@@ -353,8 +384,8 @@ def build(model, brand, out_path):
                           author="Регмонитор", subject=model["label"])
     frame = Frame(M_L, M_B, W, PAGE_H - M_T - M_B, id="main",
                   leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0)
-    doc.addPageTemplates([PageTemplate(id="p", frames=[frame], onPage=footer)])
-    doc.build(story)
+    doc.addPageTemplates([PageTemplate(id="p", frames=[frame])])
+    doc.build(story, canvasmaker=Numbered)
     return family
 
 

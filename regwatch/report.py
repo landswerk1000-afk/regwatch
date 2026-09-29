@@ -358,6 +358,16 @@ STYLE = f"""
     .card h3{{font-size:15px;}}
   }}
 
+  /* Клавиатура должна видеть, где находится: в отчёте есть и ссылки
+     на первоисточники, и кнопки отбора по органу. Кольцо графитовое,
+     не бирюзовое — бирюза на белом даёт 2,45:1, а указателю фокуса
+     нужно не меньше трёх. */
+  :focus-visible{{outline:2px solid {C['ink']};outline-offset:2px;}}
+
+  /* Колонтитул: на экране не нужен, на бумаге — единственное, что говорит,
+     что за документ вы держите, начиная со второй страницы. */
+  .runhead{{display:none;}}
+
   /* ---------- печать и PDF ---------- */
   @page{{size:A4;margin:14mm 12mm 16mm;}}
   @media print{{
@@ -369,6 +379,14 @@ STYLE = f"""
     .card,.dl .row,.dl{{break-inside:avoid;page-break-inside:avoid;}}
     .sec{{break-after:avoid;page-break-after:avoid;}}
     .no-print{{display:none!important;}}
+    /* Повтор шапки на каждой странице. Браузеры умеют это только для
+       группы заголовка таблицы, поэтому лист на время печати становится
+       таблицей: экранной вёрстки это не касается — правило внутри @media. */
+    .sheet{{display:table;width:100%;}}
+    .runhead{{display:table-header-group;}}
+    .runhead .in{{display:block;font-size:8pt;color:{C['ink_65']};
+      padding-bottom:5pt;margin-bottom:9pt;border-bottom:.5pt solid {C['line']};
+      letter-spacing:.3px;}}
     .org-btn{{border:none;background:none;padding:0;margin-right:14px;}}
     .card[hidden], .sec[hidden]{{display:block!important;}}
     /* Адрес первоисточника на бумаге по ссылке не откроешь. */
@@ -521,6 +539,12 @@ def render_html(buckets, rows, health, period_label: str, dls,
 <link rel="stylesheet" href="{B.FONT_URL}">
 <style>{STYLE}</style></head>
 <body><div class="sheet">"""]
+
+    # ---------- колонтитул для печати ----------
+    # Первым элементом листа: группа заголовка таблицы повторяется браузером
+    # на каждой странице только оттуда.
+    P.append(f'<div class="runhead"><div class="in">Мониторинг регулирования '
+             f'частных инвестиций &middot; {_esc(period_label)}</div></div>')
 
     # ---------- шапка ----------
     P.append(f"""<div class="head">

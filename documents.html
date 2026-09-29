@@ -21,6 +21,9 @@
   .search input::-webkit-search-cancel-button{display:none}
   .search input:focus{outline:none;border-color:var(--accent);
     box-shadow:0 0 0 3px var(--accent-soft)}
+  /* Правило выше гасило кольцо и для клавиатуры, а бледная бирюзовая
+     подсветка сама по себе даёт 1,05:1 — то есть ничего. */
+  .search input:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
   .search .mag{position:absolute;left:13px;top:50%;transform:translateY(-50%);
     color:var(--faint);pointer-events:none}
   .search .clr{position:absolute;right:5px;top:50%;transform:translateY(-50%);

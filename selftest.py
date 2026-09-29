@@ -1566,6 +1566,109 @@ for _c25 in _calls25:
           _ok25, _why25)
 
 
+# ------------------------- клавиатура должна видеть, где находится
+section("26. Видимый фокус")
+import re as _re26
+from regwatch import brand as _B26
+from regwatch import report as _R26
+
+# Кольцо фокуса — такой же указатель, как курсор: по WCAG 1.4.11 ему нужно
+# не меньше 3:1 к тому, на чём оно нарисовано. Бирюза на светлом даёт 2,3:1,
+# то есть его просто не видно. Проверяем числом, а не на глаз.
+_css26 = (_WEBAPP / "app.css").read_text(encoding="utf-8")
+
+
+def _hex26(v):
+    """#fff и #ffffff — одно и то же; в листе встречаются обе записи."""
+    v = v.lstrip("#")
+    return "#" + ("".join(c * 2 for c in v) if len(v) == 3 else v)
+
+
+def _vals26(name):
+    return [_hex26(v) for v in
+            _re26.findall(name + r":\s*(#[0-9a-fA-F]{3,6})\b", _css26)]
+
+
+_focus26, _bg26, _card26 = _vals26("--focus"), _vals26("--bg"), _vals26("--card")
+check("цвет фокуса объявлен в обеих темах", len(_focus26) == 2, str(_focus26))
+if len(_focus26) == 2 and len(_bg26) == 2 and len(_card26) == 2:
+    for _i26, _theme26 in enumerate(("светлая", "тёмная")):
+        for _on26, _name26 in ((_bg26[_i26], "фон"), (_card26[_i26], "карточка")):
+            _r26 = _ratio(_focus26[_i26], _on26)
+            check(f"фокус различим: {_theme26} тема, {_name26}", _r26 >= 3.0,
+                  f"{_r26:.2f}:1 при нужных 3:1")
+
+check("кольцо фокуса есть в приложении", ":focus-visible{outline:" in _css26)
+# Правило, гасящее контур, легко поставить и забыть — тогда мышью всё
+# красиво, а клавиатурой не пройти.
+_docs26 = (_WEBAPP / "documents.html").read_text(encoding="utf-8")
+check("поиск не гасит кольцо для клавиатуры",
+      "input:focus-visible{outline:2px" in _docs26,
+      "правило :focus у поля поиска выключает контур и для клавиатуры тоже")
+
+# Отчёт — отдельный файл со своими стилями: в нём и ссылки на
+# первоисточники, и кнопки отбора по органу.
+check("кольцо фокуса есть в отчёте", ":focus-visible{outline:" in _R26.STYLE)
+_rf26 = _re26.search(r":focus-visible\{outline:2px solid (#[0-9a-fA-F]{6})", _R26.STYLE)
+check("фокус в отчёте различим на белом",
+      bool(_rf26) and _ratio(_rf26.group(1), "#ffffff") >= 3.0,
+      f"{_ratio(_rf26.group(1), '#ffffff'):.2f}:1" if _rf26 else "цвет не найден")
+
+
+# ------------------------------- колонтитул: что за документ в руках
+section("27. Колонтитул на каждой странице")
+_h27 = _R26.render_html({}, [], [], "Отчёт за 29.09.2026", [], None)
+check("колонтитул есть в разметке отчёта", 'class="runhead"' in _h27)
+check("колонтитул называет выпуск", "Отчёт за 29.09.2026" in _h27.split("</div>")[0]
+      or "Отчёт за 29.09.2026" in _h27[:_h27.index('class="head"')],
+      "в колонтитуле нет даты выпуска")
+check("на экране колонтитула не видно", ".runhead{display:none;}" in _R26.STYLE)
+# Браузеры повторяют на каждой странице только группу заголовка таблицы.
+_print27 = _R26.STYLE[_R26.STYLE.index("@media print"):]
+check("в печати колонтитул повторяется",
+      "table-header-group" in _print27 and ".sheet{display:table" in _print27)
+check("экранной вёрстки правило не касается",
+      ".sheet{display:table" not in _R26.STYLE[:_R26.STYLE.index("@media print")])
+
+# PDF уходит письмом и живёт дальше сам: его пересылают и печатают.
+# На четвёртой странице должно быть видно, что это и всё ли дошло.
+from regwatch.deliver import pdf as _pdf27
+if not _pdf27.configured(Path(__file__).resolve().parent):
+    skip("колонтитул в PDF", "нет окружения .venv-pdf")
+else:
+    try:
+        from pypdf import PdfReader as _Reader27
+    except ImportError:
+        _Reader27 = None
+    if _Reader27 is None:
+        skip("колонтитул в PDF", "нет pypdf для чтения готового файла")
+    else:
+        import tempfile as _tf27
+        # Идентификаторы обязаны различаться: отчёт схлопывает одинаковые
+        # в одну карточку, и документ остался бы одностраничным.
+        _rows27 = [_Row23(id=f"x{_i}", authority="ЦБ", summary="С" * 900, stage=None,
+                          title=f"Проект указания Банка России № {_i} " * 3, url=None,
+                          published_at="2026-09-29T00:00:00+03:00", meta="{}",
+                          relevance=0.7, urgency="high", topics="[]",
+                          event_type="new", event_id=_i)
+                   for _i in range(22)]
+        _m27 = _R26.to_model(_R26.group(_rows27, {"max_items_per_report": 60}),
+                             _rows27, [], "Отчёт за 29.09.2026", [])
+        _out27 = Path(_tf27.mkdtemp()) / "p.pdf"
+        _pdf27.build(Path(__file__).resolve().parent, _m27, _out27)
+        _pages27 = _Reader27(str(_out27)).pages
+        check("PDF получился многостраничным", len(_pages27) > 1, f"{len(_pages27)} стр.")
+        _bad27 = []
+        for _i27, _pg27 in enumerate(_pages27, 1):
+            _txt27 = _pg27.extract_text() or ""
+            if "Отчёт за 29.09.2026" not in _txt27:
+                _bad27.append(f"{_i27}: нет выпуска")
+            elif f"{_i27} из {len(_pages27)}" not in _txt27:
+                _bad27.append(f"{_i27}: нет номера")
+        check("на каждой странице PDF виден выпуск и номер", not _bad27, "; ".join(_bad27))
+        _sh24.rmtree(_out27.parent, ignore_errors=True)
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""
