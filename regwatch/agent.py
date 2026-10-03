@@ -264,8 +264,65 @@ class Agent:
         except Exception as e:
             log.warning("отметка о сборе не записана: %s: %s", type(e).__name__, e)
 
+    @staticmethod
+    def wait_until(hhmm: str) -> float:
+        """Держит прогон до указанного времени по Москве. Возвращает паузу в секундах.
+
+        Зачем. Отчёт нужен к 9:30, а планировщик GitHub не пунктуален:
+        задача, назначенная на 6:30 UTC, в этом репозитории запускалась
+        с опозданием от 15 до 27 минут, и письмо приходило в 9:51–10:00.
+        Подвинуть расписание на час раньше мало: тогда отчёт придёт в 8:50,
+        то есть «когда получится», просто в другую сторону.
+
+        Поэтому сбор начинается с запасом, а рассылка ждёт точного времени.
+        Дорогая и непредсказуемая часть — обход двенадцати источников —
+        к этому моменту уже позади.
+
+        Ждём не дольше полутора часов: если опоздание оказалось больше
+        запаса, отчёт нужно слать сразу, а не держать до завтра.
+        """
+        import time
+
+        from .util import now_msk
+
+        wait, why = Agent.seconds_until(hhmm, now_msk())
+        if not wait:
+            log.info("рассылаю сразу: %s", why)
+            return 0.0
+        log.info("отчёт готов, жду до %s по Москве (%.0f мин)", hhmm, wait / 60)
+        time.sleep(wait)
+        return wait
+
+    # Больше полутора часов не ждём ни при каких условиях: если опоздание
+    # планировщика съело весь запас, отчёт нужен сразу, а не завтра.
+    MAX_WAIT_MINUTES = 90
+
+    @staticmethod
+    def seconds_until(hhmm: str, now) -> tuple:
+        """Сколько секунд ждать до ЧЧ:ММ. Возвращает (секунды, причина).
+
+        Вынесено отдельно от сна, чтобы проверять расчёт, а не засыпать
+        в тестах на сорок минут.
+        """
+        try:
+            hh, mm = (int(x) for x in str(hhmm).split(":", 1))
+            if not (0 <= hh < 24 and 0 <= mm < 60):
+                raise ValueError(hhmm)
+        except Exception:
+            return 0.0, f"время «{hhmm}» не разобрано"
+
+        target = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        wait = (target - now).total_seconds()
+        if wait <= 0:
+            return 0.0, f"{hhmm} уже прошло"
+        if wait > Agent.MAX_WAIT_MINUTES * 60:
+            return 0.0, (f"до {hhmm} ещё {wait / 60:.0f} мин — "
+                         "это больше запаса")
+        return wait, ""
+
     def run(self, alert_mode: bool = False, dry_run: bool = False,
-            skip_collect: bool = False, mark: bool = True) -> dict:
+            skip_collect: bool = False, mark: bool = True,
+            not_before: str | None = None) -> dict:
         stats = {} if skip_collect else self.collect()
 
         # До всего остального: срочный прогон без событий выходит из run()
@@ -324,6 +381,11 @@ class Agent:
 
         subj = self.subject(buckets, alert_mode)
         push_reached_nobody = False
+
+        # Отчёт собран — теперь можно ждать точного времени. Всё, что
+        # зависит от сети и может затянуться, уже выполнено.
+        if not_before and not alert_mode and not dry_run:
+            out["waited"] = round(self.wait_until(not_before))
 
         channels = []
         # Отчёты кладём в веб-приложение до рассылки: уведомление ведёт на них,

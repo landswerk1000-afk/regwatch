@@ -127,7 +127,8 @@ def cmd_run(cfg: Config, args) -> int:
     a = Agent(cfg)
     try:
         out = a.run(alert_mode=args.alert, dry_run=args.dry_run,
-                    skip_collect=args.no_collect, mark=not args.keep)
+                    skip_collect=args.no_collect, mark=not args.keep,
+                    not_before=args.not_before)
         st = out["stats"] or {}
         if st:
             print(f"Сбор: {st['sources_ok']} ок / {st['sources_failed']} сбоев · "
@@ -537,6 +538,8 @@ def main(argv=None) -> int:
     r.add_argument("--dry-run", action="store_true", help="не отправлять письмо")
     r.add_argument("--no-collect", action="store_true", help="не собирать, отчёт по накопленному")
     r.add_argument("--keep", action="store_true", help="не помечать события отправленными")
+    r.add_argument("--not-before", metavar="ЧЧ:ММ", default=None,
+                   help="собрать сразу, но разослать не раньше этого времени по Москве")
 
     pr = sub.add_parser("proxies", help="найти рабочий бесплатный российский прокси")
     pr.add_argument("--limit", type=int, default=200, help="сколько кандидатов проверить")
