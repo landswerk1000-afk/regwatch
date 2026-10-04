@@ -3,9 +3,10 @@
    (https://<пользователь>.github.io/<репозиторий>/), и абсолютный "/" увёл бы
    в корень домена. */
 
-const CACHE = 'regwatch-v3';
+const CACHE = 'regwatch-v4';
 const SHELL = ['./', './index.html', './documents.html', './app.css',
-               './fresh.js', './config.js', './icon-192.png', './manifest.json'];
+               './fresh.js', './config.js', './icon-192.png', './logo.svg',
+               './manifest.json'];
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

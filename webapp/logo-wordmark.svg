@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 442 100" width="442" height="100" role="img" aria-label="Регмонитор — мониторинг регулирования">
+  <title>Регмонитор</title>
+  <!-- Горизонтальная связка: знак плюс название. Шрифт подписи — Source Serif 4,
+       тот же, что в презентации; где его нет, подставится Georgia. -->
+  <rect width="100" height="100" rx="24" fill="#313132"/>
+  <rect x="23" y="28" width="44" height="5" rx="2.5" fill="#6f7074"/>
+  <rect x="23" y="40" width="28" height="5" rx="2.5" fill="#6f7074"/>
+  <rect x="23" y="53" width="40" height="11" rx="5.5" fill="#06b6cb"/>
+  <rect x="68" y="46" width="9" height="25" rx="4.5" fill="#FF8562"/>
+  <text x="128" y="57" font-family="Source Serif 4, Georgia, 'Times New Roman', serif"
+        font-size="42" font-weight="700" fill="#313132" letter-spacing="-0.5">Регмонитор</text>
+  <text x="129" y="80" font-family="Inter, Arial, Helvetica, sans-serif"
+        font-size="14" font-weight="600" fill="#197b88" letter-spacing="2.8">МОНИТОРИНГ РЕГУЛИРОВАНИЯ</text>
+</svg>
