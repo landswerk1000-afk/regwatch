@@ -1955,6 +1955,127 @@ if _daily30:
           f"ежедневный в {_h30}:xx UTC, срочные в {sorted(_hours30)}")
 
 
+# ------------------- будильник: отчёт не должен зависеть от очереди GitHub
+section("31. Будильник вместо расписания")
+import json as _js31, re as _re31, tempfile as _tf31, shutil as _sh31
+import urllib.error as _ue31
+from datetime import timedelta as _td31
+from regwatch.store import Store as _St31
+from regwatch.util import now_msk as _now31, iso as _iso31
+
+# 4 октября 2026 задача по расписанию GitHub простояла в очереди пять
+# с половиной часов, и отчёт ушёл в 14:10 вместо 9:30. Запуск по команде
+# в эту очередь не попадает, поэтому будильник живёт в Яндекс Облаке.
+import dispatch as _dsp31
+
+
+class _Sent31:
+    def __init__(self, status=204):
+        self.status = status
+    def __enter__(self):
+        return self
+    def __exit__(self, *a):
+        return False
+
+
+_seen31 = {}
+
+
+def _fake_open31(req, timeout=None):
+    _seen31["url"] = req.full_url
+    _seen31["method"] = req.get_method()
+    _seen31["body"] = _js31.loads(req.data.decode("utf-8"))
+    _seen31["auth"] = req.get_header("Authorization")
+    return _Sent31(_seen31.get("code", 204))
+
+
+_real_open31 = _dsp31.urllib.request.urlopen
+_dsp31.urllib.request.urlopen = _fake_open31
+os.environ.update({"GH_REPO": "кто-то/regwatch", "GH_WORKFLOW": "regwatch.yml",
+                   "GH_TOKEN": "секрет"})
+try:
+    _r31 = _dsp31.handler({}, None)
+    check("будильник заказывает запуск", _r31["statusCode"] == 200, str(_r31))
+    check("адрес GitHub собран верно",
+          _seen31["url"].endswith("/repos/кто-то/regwatch/actions/workflows/"
+                                  "regwatch.yml/dispatches"), _seen31["url"])
+    check("запрос POST", _seen31["method"] == "POST")
+    check("просит именно дневной отчёт",
+          _seen31["body"]["inputs"]["mode"] == "daily", str(_seen31["body"]))
+    check("токен уходит заголовком, не в адресе",
+          _seen31["auth"] == "Bearer секрет" and "секрет" not in _seen31["url"])
+
+    # Неожиданный успех — тоже повод насторожиться: 204 и только 204.
+    _seen31["code"] = 200
+    check("любой ответ, кроме 204, считается сбоем",
+          _dsp31.handler({}, None)["statusCode"] == 500)
+    _seen31["code"] = 204
+
+    # Нет права на запуск — GitHub отвечает 403, и причину надо показать,
+    # а не проглотить: иначе будильник молчит, и непонятно почему.
+    def _denied31(req, timeout=None):
+        raise _ue31.HTTPError(req.full_url, 403, "Forbidden", {},
+                              __import__("io").BytesIO(b'{"message":"Resource not accessible"}'))
+
+    _dsp31.urllib.request.urlopen = _denied31
+    _r31d = _dsp31.handler({}, None)
+    check("отказ GitHub виден в ответе",
+          _r31d["statusCode"] == 500 and "403" in _r31d["body"]
+          and "Resource not accessible" in _r31d["body"], _r31d["body"])
+
+    # Забытая переменная должна называться по имени, а не падать молча.
+    _dsp31.urllib.request.urlopen = _fake_open31
+    os.environ.pop("GH_TOKEN")
+    try:
+        _dsp31.handler({}, None)
+        check("пустая настройка названа по имени", False, "ошибки не было")
+    except RuntimeError as _e31:
+        check("пустая настройка названа по имени", "GH_TOKEN" in str(_e31), str(_e31))
+finally:
+    _dsp31.urllib.request.urlopen = _real_open31
+    for _k31 in ("GH_REPO", "GH_WORKFLOW", "GH_TOKEN"):
+        os.environ.pop(_k31, None)
+
+# Будильник и расписание могут сработать оба. Второй отчёт об одном и том же —
+# это лишнее уведомление, и защита от него считает по московской дате:
+# прогон идёт утром, и граница суток по UTC пришлась бы на середину дня.
+_b31 = Path(_tf31.mkdtemp())
+_st31 = _St31(_b31 / "t.db")
+check("пустой журнал — отчёта сегодня не было", _st31.daily_sent_today() is None)
+_st31.log_delivery("alert", "push", "ok")
+_st31.db.commit()
+check("срочное уведомление за дневной отчёт не считается",
+      _st31.daily_sent_today() is None)
+_st31.db.execute("INSERT INTO deliveries (kind,channel,sent_at,status,item_count) "
+                 "VALUES ('daily','push',?,'failed',0)",
+                 (_iso31(_now31()),))
+_st31.db.commit()
+check("несостоявшаяся доставка за отчёт не считается",
+      _st31.daily_sent_today() is None)
+_st31.log_delivery("daily", "push", "ok")
+_st31.db.commit()
+check("состоявшийся отчёт виден", _st31.daily_sent_today() is not None)
+_st31.db.execute("DELETE FROM deliveries")
+_st31.db.execute("INSERT INTO deliveries (kind,channel,sent_at,status,item_count) "
+                 "VALUES ('daily','push',?,'ok',0)",
+                 (_iso31(_now31() - _td31(days=1)),))
+_st31.db.commit()
+check("вчерашний отчёт сегодняшний не отменяет", _st31.daily_sent_today() is None)
+_st31.close()
+_sh31.rmtree(_b31, ignore_errors=True)
+
+# Подстраховка обязана быть именно подстраховкой: прогон по расписанию
+# идёт с ключом, запуск по команде — без него.
+_wf31 = (Path(__file__).resolve().parent / ".github" / "workflows"
+         / "regwatch.yml").read_text(encoding="utf-8")
+check("прогон по расписанию не повторяет отчёт",
+      "--skip-if-done" in _wf31 and 'github.event_name }}" = "schedule"' in _wf31,
+      "без этого будильник и расписание дадут два уведомления об одном и том же")
+check("срочные проверки уведены с ровного часа",
+      not _re31.search(r'- cron: "0 [0-9,]+ \* \* \*"', _wf31),
+      "на ровный час приходится пик очереди GitHub")
+
+
 # ------------------------------------------------------------------ итог
 print("\n" + "=" * 66)
 tail = f"   Пропущено: {len(SKIPPED)}" if SKIPPED else ""

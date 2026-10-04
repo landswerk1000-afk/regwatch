@@ -6,7 +6,7 @@ import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
 
-from .util import now_utc, iso, sha
+from .util import MSK, now_msk, now_utc, iso, parse_dt, sha
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
@@ -410,6 +410,24 @@ class Store:
             """INSERT INTO deliveries (kind, channel, sent_at, status, detail, item_count, path)
                VALUES (?,?,?,?,?,?,?)""",
             (kind, channel, iso(now_utc()), status, detail, count, path))
+
+    def daily_sent_today(self) -> str | None:
+        """Когда сегодня уже уходил дневной отчёт. None — ещё не уходил.
+
+        Нужно подстраховке. Отчёт запускает будильник из Яндекс Облака,
+        а расписание GitHub осталось на случай, если будильник промолчит.
+        Когда срабатывают оба, второй отчёт — это лишнее уведомление
+        об одном и том же. Сравниваем по московской дате: прогон идёт
+        утром, и граница суток по UTC пришлась бы на середину рабочего дня.
+        """
+        today = now_msk().strftime("%Y-%m-%d")
+        for r in self.db.execute(
+                "SELECT sent_at FROM deliveries WHERE kind='daily' AND status='ok' "
+                "ORDER BY id DESC LIMIT 40"):
+            dt = parse_dt(r[0])
+            if dt and dt.astimezone(MSK).strftime("%Y-%m-%d") == today:
+                return r[0]
+        return None
 
     # ---------- подписки на push ----------
     def add_subscription(self, endpoint: str, p256dh: str, auth: str,

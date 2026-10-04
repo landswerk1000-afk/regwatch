@@ -126,6 +126,15 @@ def cmd_collect(cfg: Config, args) -> int:
 def cmd_run(cfg: Config, args) -> int:
     a = Agent(cfg)
     try:
+        # Подстраховка от второго отчёта: будильник из Яндекс Облака и
+        # расписание GitHub могут сработать оба, и тогда об одном и том же
+        # придёт два уведомления.
+        if args.skip_if_done and not args.alert:
+            when = a.store.daily_sent_today()
+            if when:
+                print(f"дневной отчёт сегодня уже уходил ({when[11:16]} UTC) — пропуск")
+                return 0
+
         out = a.run(alert_mode=args.alert, dry_run=args.dry_run,
                     skip_collect=args.no_collect, mark=not args.keep,
                     not_before=args.not_before)
@@ -540,6 +549,8 @@ def main(argv=None) -> int:
     r.add_argument("--keep", action="store_true", help="не помечать события отправленными")
     r.add_argument("--not-before", metavar="ЧЧ:ММ", default=None,
                    help="собрать сразу, но разослать не раньше этого времени по Москве")
+    r.add_argument("--skip-if-done", action="store_true",
+                   help="не делать дневной отчёт, если он сегодня уже уходил")
 
     pr = sub.add_parser("proxies", help="найти рабочий бесплатный российский прокси")
     pr.add_argument("--limit", type=int, default=200, help="сколько кандидатов проверить")
